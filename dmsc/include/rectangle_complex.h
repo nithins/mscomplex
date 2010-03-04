@@ -40,50 +40,47 @@ class rectangle_complex
 
     typedef unsigned int uint;
 
-    struct size_def
+    struct size_def:public two_tuple_t<coord_type>
     {
-      coord_type x;
-      coord_type y;
+      inline coord_type x() const {return (*this)[0];}
+      inline coord_type y() const {return (*this)[1];}
 
-      size_def ( coord_type _x,coord_type _y ) :x ( _x ),y ( _y ) {}
+      size_def(const coord_type& x,const coord_type& y)
+          :two_tuple_t<coord_type>(x,y){}
 
       static size_def sub ( const size_def & s1,const size_def & s2 )
       {
-        return size_def ( s1.x-s2.x,s1.y-s2.y );
-      }
-
-      friend std::ostream& operator<< ( std::ostream& o, const size_def& s )
-      {
-        return o<<"("<<s.x<<","<<s.y<<")";
+        return size_def ( s1.x-s2.x,s1.y-s2.y() );
       }
     };
 
-    struct point_def
+    struct point_def:public two_tuple_t<coord_type>
     {
-      coord_type x;
-      coord_type y;
+      inline const coord_type& x() const {return (*this)[0];}
+      inline const coord_type& y() const {return (*this)[1];}
 
-      point_def ( coord_type _x,coord_type _y ) :x ( _x ),y ( _y )
-      {
-      }
+      inline coord_type& x(){return (*this)[0];}
+      inline coord_type& y(){return (*this)[1];}
 
-      point_def () :x ( 0 ),y ( 0 )
-      {
-      }
+
+      point_def ( const coord_type &x,const coord_type &y ) :
+          two_tuple_t<coord_type>(x,y){}
+
+      point_def () :two_tuple_t<coord_type>(0,0){}
 
       static point_def add ( const point_def & p,const size_def & s )
       {
-        return point_def ( p.x+s.x,p.y+s.y );
+        return point_def ( p.x()+s.x(),p.y()+s.y() );
       }
 
       static point_def sub ( const point_def & p,const size_def & s )
       {
-        return point_def ( p.x-s.x,p.y-s.y );
+        return point_def ( p.x()-s.x(),p.y()-s.y() );
       }
 
       static size_def sub ( const point_def & p1,const point_def & p2 )
       {
-        return size_def ( p1.x-p2.x,p1.y-p2.y );
+        return size_def ( p1.x()-p2.x(),p1.y()-p2.y() );
       }
 
       point_def add ( const size_def & s ) const
@@ -101,11 +98,6 @@ class rectangle_complex
         return sub ( *this,p );
       }
 
-      friend std::ostream& operator<< ( std::ostream& o, const point_def& p )
-      {
-        return o<<"("<<p.x<<","<<p.y<<")";
-      }
-
     };
 
     struct rectangle_def
@@ -114,6 +106,12 @@ class rectangle_complex
 
       point_def bl;
       point_def tr;
+
+
+      size_def size()
+      {
+        return tr.sub(bl);
+      }
 
 
       rectangle_def
@@ -127,11 +125,11 @@ class rectangle_complex
 
       {
 
-        bl.x = std::min ( start_x*bias,end_x*bias );
-        bl.y = std::min ( start_y*bias,end_y*bias );
+        bl.x() = std::min ( start_x*bias,end_x*bias );
+        bl.y() = std::min ( start_y*bias,end_y*bias );
 
-        tr.x = std::max ( start_x*bias,end_x*bias );
-        tr.y = std::max ( start_y*bias,end_y*bias );
+        tr.x() = std::max ( start_x*bias,end_x*bias );
+        tr.y() = std::max ( start_y*bias,end_y*bias );
 
       }
 
@@ -141,11 +139,11 @@ class rectangle_complex
         const point_def &p2
       )
       {
-        bl.x = std::min ( p1.x,p2.x );
-        bl.y = std::min ( p1.y,p2.y );
+        bl.x() = std::min ( p1.x(),p2.x() );
+        bl.y() = std::min ( p1.y(),p2.y() );
 
-        tr.x = std::max ( p1.x,p2.x );
-        tr.y = std::max ( p1.y,p2.y );
+        tr.x() = std::max ( p1.x(),p2.x() );
+        tr.y() = std::max ( p1.y(),p2.y() );
 
       }
 
@@ -153,10 +151,10 @@ class rectangle_complex
       {
         return
           (
-            ( p.x > bl.x ) &&
-            ( p.y > bl.y ) &&
-            ( p.x < tr.x ) &&
-            ( p.y < tr.y )
+            ( p.x() > bl.x() ) &&
+            ( p.y() > bl.y() ) &&
+            ( p.x() < tr.x() ) &&
+            ( p.y() < tr.y() )
           );
 
       }
@@ -165,26 +163,26 @@ class rectangle_complex
       {
         return
           (
-            ( p.x >= bl.x ) &&
-            ( p.y >= bl.y ) &&
-            ( p.x <= tr.x ) &&
-            ( p.y <= tr.y )
+            ( p.x() >= bl.x() ) &&
+            ( p.y() >= bl.y() ) &&
+            ( p.x() <= tr.x() ) &&
+            ( p.y() <= tr.y() )
           );
       }
 
       bool isOnBoundry ( const point_def & p ) const
       {
-        return ( IsIn ( p ) && !isInInterior ( p ) );
+        return ( contains ( p ) && !isInInterior ( p ) );
       }
 
       bool contains ( const _SELF_NAME &rec ) const
       {
         return
           (
-            ( bl.x < rec.bl.x ) &&
-            ( bl.y < rec.bl.y ) &&
-            ( tr.x > rec.tr.x ) &&
-            ( tr.y > rec.tr.y )
+            ( bl.x() < rec.bl.x() ) &&
+            ( bl.y() < rec.bl.y() ) &&
+            ( tr.x() > rec.tr.x() ) &&
+            ( tr.y() > rec.tr.y() )
           );
       }
 
@@ -192,27 +190,27 @@ class rectangle_complex
       {
         return
           ! (
-            ( ( tr.x ) < ( rec.bl.x ) ) ||
-            ( ( rec.tr.x ) < ( bl.x ) ) ||
-            ( ( tr.y ) < ( rec.bl.y ) ) ||
-            ( ( rec.tr.y ) < ( bl.y ) )
+            ( ( tr.x() ) < ( rec.bl.x() ) ) ||
+            ( ( rec.tr.x() ) < ( bl.x() ) ) ||
+            ( ( tr.y() ) < ( rec.bl.y() ) ) ||
+            ( ( rec.tr.y() ) < ( bl.y() ) )
           );
       }
 
       void mul ( const coord_type & b )
       {
-        bl.x *= b;
-        bl.y *= b;
-        tr.x *= b;
-        tr.y *= b;
+        bl.x() *= b;
+        bl.y() *= b;
+        tr.x() *= b;
+        tr.y() *= b;
       }
 
       void div ( const coord_type & b )
       {
-        bl.x /= b;
-        bl.y /= b;
-        tr.x /= b;
-        tr.y /= b;
+        bl.x() /= b;
+        bl.y() /= b;
+        tr.x() /= b;
+        tr.y() /= b;
       }
 
       void shrink ( const size_def &s )
@@ -229,27 +227,27 @@ class rectangle_complex
 
       point_def mid() const
       {
-        return point_def ( ( bl.x+tr.x ) /2, ( bl.y+tr.y ) /2 );
+        return point_def ( ( bl.x()+tr.x() ) /2, ( bl.y()+tr.y() ) /2 );
       }
 
       coord_type left() const
       {
-        return bl.x;
+        return bl.x();
       }
 
       coord_type right() const
       {
-        return tr.x;
+        return tr.x();
       }
 
       coord_type top() const
       {
-        return tr.y;
+        return tr.y();
       }
 
       coord_type bottom() const
       {
-        return bl.y;
+        return bl.y();
       }
 
       point_def bottom_left() const
@@ -278,7 +276,7 @@ class rectangle_complex
 
       uint getNumQuads()
       {
-        return ( tr.x-bl.x ) * ( tr.y-bl.y );
+        return ( tr.x-bl.x() ) * ( tr.y-bl.y() );
       }
 
       friend std::ostream& operator<< ( std::ostream& o, const rectangle_def& r )
@@ -462,10 +460,10 @@ class rectangle_complex
 
           switch ( i )
           {
-            case 0:p.x = c.x + 1; p.y = c_.y    ;break;
-            case 1:p.x = c_.x   ; p.y = c.y + 1 ;break;
-            case 2:p.x = c.x - 1; p.y = c_.y    ;break;
-            case 3:p.x = c_.x   ; p.y = c.y - 1 ;break;
+            case 0:p.x() = c.x() + 1; p.y() = c_.y()    ;break;
+            case 1:p.x() = c_.x()   ; p.y() = c.y() + 1 ;break;
+            case 2:p.x() = c.x() - 1; p.y() = c_.y()    ;break;
+            case 3:p.x() = c_.x()   ; p.y() = c.y() - 1 ;break;
           }
 
           insiderects.push_back ( rectangle_def ( p,b_ ) );
@@ -508,48 +506,48 @@ class rectangle_complex
 
           switch ( i )
           {
-            case 0:p.x = c.x + 1; p.y = c.y + 1 ;break;
-            case 1:p.x = c.x - 1; p.y = c.y + 1 ;break;
-            case 2:p.x = c.x - 1; p.y = c.y - 1 ;break;
-            case 3:p.x = c.x + 1; p.y = c.y - 1 ;break;
+            case 0:p.x() = c.x() + 1; p.y() = c.y() + 1 ;break;
+            case 1:p.x() = c.x() - 1; p.y() = c.y() + 1 ;break;
+            case 2:p.x() = c.x() - 1; p.y() = c.y() - 1 ;break;
+            case 3:p.x() = c.x() + 1; p.y() = c.y() - 1 ;break;
           }
           insiderects.push_back ( rectangle_def ( p,c_ ) );
 
           switch ( i )
           {
-            case 0:p.x = c.x - 1; p.y = c.y + 1 ;break;
-            case 1:p.x = c.x + 1; p.y = c.y + 1 ;break;
-            case 2:p.x = c.x + 1; p.y = c.y - 1 ;break;
-            case 3:p.x = c.x - 1; p.y = c.y - 1 ;break;
+            case 0:p.x() = c.x() - 1; p.y() = c.y() + 1 ;break;
+            case 1:p.x() = c.x() + 1; p.y() = c.y() + 1 ;break;
+            case 2:p.x() = c.x() + 1; p.y() = c.y() - 1 ;break;
+            case 3:p.x() = c.x() - 1; p.y() = c.y() - 1 ;break;
           }
           insiderects.push_back ( rectangle_def ( p,d_ ) );
 
           switch ( i )
           {
-            case 0:p.x = c.x + 1; p.y = c.y - 1 ;break;
-            case 1:p.x = c.x - 1; p.y = c.y - 1 ;break;
-            case 2:p.x = c.x - 1; p.y = c.y + 1 ;break;
-            case 3:p.x = c.x + 1; p.y = c.y + 1 ;break;
+            case 0:p.x() = c.x() + 1; p.y() = c.y() - 1 ;break;
+            case 1:p.x() = c.x() - 1; p.y() = c.y() - 1 ;break;
+            case 2:p.x() = c.x() - 1; p.y() = c.y() + 1 ;break;
+            case 3:p.x() = c.x() + 1; p.y() = c.y() + 1 ;break;
           }
           insiderects.push_back ( rectangle_def ( p,b_ ) );
 
           switch ( i )
           {
-            case 0:p.x = c.x + 1; p.y = c.y;break;
-            case 1:p.x = c.x - 1; p.y = c.y;break;
-            case 2:p.x = c.x - 1; p.y = c.y;break;
-            case 3:p.x = c.x + 1; p.y = c.y;break;
+            case 0:p.x() = c.x() + 1; p.y() = c.y();break;
+            case 1:p.x() = c.x() - 1; p.y() = c.y();break;
+            case 2:p.x() = c.x() - 1; p.y() = c.y();break;
+            case 3:p.x() = c.x() + 1; p.y() = c.y();break;
           }
-          insidelines.push_back ( rectangle_def ( p,point_def ( c.x,c_.y ) ) );
+          insidelines.push_back ( rectangle_def ( p,point_def ( c.x(),c_.y() ) ) );
 
           switch ( i )
           {
-            case 0:p.x = c.x; p.y = c.y + 1 ;break;
-            case 1:p.x = c.x; p.y = c.y + 1 ;break;
-            case 2:p.x = c.x; p.y = c.y - 1 ;break;
-            case 3:p.x = c.x; p.y = c.y - 1 ;break;
+            case 0:p.x() = c.x(); p.y() = c.y() + 1 ;break;
+            case 1:p.x() = c.x(); p.y() = c.y() + 1 ;break;
+            case 2:p.x() = c.x(); p.y() = c.y() - 1 ;break;
+            case 3:p.x() = c.x(); p.y() = c.y() - 1 ;break;
           }
-          insidelines.push_back ( rectangle_def ( p,point_def ( c_.x,c.y ) ) );
+          insidelines.push_back ( rectangle_def ( p,point_def ( c_.x(),c.y() ) ) );
           return true;
         }
       }
@@ -581,20 +579,20 @@ class rectangle_complex
         point_def &c_ = p_[2];
         point_def &d_ = p_[3];
 
-        insiderects.push_back ( rectangle_def ( a_,point_def ( b.x - 1,b.y - 1 ) ) );
-        insiderects.push_back ( rectangle_def ( b_,point_def ( c.x + 1,c.y - 1 ) ) );
-        insiderects.push_back ( rectangle_def ( c_,point_def ( d.x + 1,d.y + 1 ) ) );
-        insiderects.push_back ( rectangle_def ( d_,point_def ( a.x - 1,a.y + 1 ) ) );
+        insiderects.push_back ( rectangle_def ( a_,point_def ( b.x() - 1,b.y() - 1 ) ) );
+        insiderects.push_back ( rectangle_def ( b_,point_def ( c.x() + 1,c.y() - 1 ) ) );
+        insiderects.push_back ( rectangle_def ( c_,point_def ( d.x() + 1,d.y() + 1 ) ) );
+        insiderects.push_back ( rectangle_def ( d_,point_def ( a.x() - 1,a.y() + 1 ) ) );
 
         _LOG_V ( "added inside rect="<<* ( insiderects.end()-4 ) );
         _LOG_V ( "added inside rect="<<* ( insiderects.end()-3 ) );
         _LOG_V ( "added inside rect="<<* ( insiderects.end()-2 ) );
         _LOG_V ( "added inside rect="<<* ( insiderects.end()-1 ) );
 
-        insidelines.push_back ( rectangle_def ( point_def ( a.x - 1,a.y )    ,point_def ( a_.x, a.y ) ) );
-        insidelines.push_back ( rectangle_def ( point_def ( b.x    ,b.y - 1 ),point_def ( b.x , b_.y ) ) );
-        insidelines.push_back ( rectangle_def ( point_def ( c.x + 1,c.y )    ,point_def ( c_.x, c.y ) ) );
-        insidelines.push_back ( rectangle_def ( point_def ( d.x    ,d.y + 1 ),point_def ( d.x , d_.y ) ) );
+        insidelines.push_back ( rectangle_def ( point_def ( a.x() - 1,a.y() )    ,point_def ( a_.x(), a.y() ) ) );
+        insidelines.push_back ( rectangle_def ( point_def ( b.x()    ,b.y() - 1 ),point_def ( b.x() , b_.y() ) ) );
+        insidelines.push_back ( rectangle_def ( point_def ( c.x() + 1,c.y() )    ,point_def ( c_.x(), c.y() ) ) );
+        insidelines.push_back ( rectangle_def ( point_def ( d.x()    ,d.y() + 1 ),point_def ( d.x() , d_.y() ) ) );
 
         _LOG_V ( "added inside line="<<* ( insidelines.end()-4 ) );
         _LOG_V ( "added inside line="<<* ( insidelines.end()-3 ) );
@@ -637,49 +635,49 @@ class rectangle_complex
 
           switch ( i )
           {
-            case 0:p1.x = c_.x   ; p1.y = c.y + 1;break;
-            case 1:p1.x = c.x - 1; p1.y = c_.y   ;break;
-            case 2:p1.x = c_.x   ; p1.y = c.y - 1;break;
-            case 3:p1.x = c.x + 1; p1.y = c_.y   ;break;
+            case 0:p1.x() = c_.x()   ; p1.y() = c.y() + 1;break;
+            case 1:p1.x() = c.x() - 1; p1.y() = c_.y()   ;break;
+            case 2:p1.x() = c_.x()   ; p1.y() = c.y() - 1;break;
+            case 3:p1.x() = c.x() + 1; p1.y() = c_.y()   ;break;
 
           }
           insiderects.push_back ( rectangle_def ( p1,d_ ) );
 
           switch ( i )
           {
-            case 0:p1.x = c.x + 1; p1.y = c.y - 1;break;
-            case 1:p1.x = c.x + 1; p1.y = c.y + 1;break;
-            case 2:p1.x = c.x - 1; p1.y = c.y + 1;break;
-            case 3:p1.x = c.x - 1; p1.y = c.y - 1;break;
+            case 0:p1.x() = c.x() + 1; p1.y() = c.y() - 1;break;
+            case 1:p1.x() = c.x() + 1; p1.y() = c.y() + 1;break;
+            case 2:p1.x() = c.x() - 1; p1.y() = c.y() + 1;break;
+            case 3:p1.x() = c.x() - 1; p1.y() = c.y() - 1;break;
 
           }
           insiderects.push_back ( rectangle_def ( p1,b_ ) );
 
           switch ( i )
           {
-            case 0:p1.x = b.x - 1; p1.y = b.y - 1;break;
-            case 1:p1.x = b.x + 1; p1.y = b.y - 1;break;
-            case 2:p1.x = b.x + 1; p1.y = b.y + 1;break;
-            case 3:p1.x = b.x - 1; p1.y = b.y + 1;break;
+            case 0:p1.x() = b.x() - 1; p1.y() = b.y() - 1;break;
+            case 1:p1.x() = b.x() + 1; p1.y() = b.y() - 1;break;
+            case 2:p1.x() = b.x() + 1; p1.y() = b.y() + 1;break;
+            case 3:p1.x() = b.x() - 1; p1.y() = b.y() + 1;break;
 
           }
           insiderects.push_back ( rectangle_def ( p1,a_ ) );
 
           switch ( i )
           {
-            case 0:p1 = c.add ( size_def ( 1,0 ) ); p2.x = c_.x;p2.y=c.y ;break;
-            case 1:p1 = c.add ( size_def ( 0,1 ) ); p2.x = c.x ;p2.y=c_.y;break;
-            case 2:p1 = c.sub ( size_def ( 1,0 ) ); p2.x = c_.x;p2.y=c.y ;break;
-            case 3:p1 = c.sub ( size_def ( 0,1 ) ); p2.x = c.x ;p2.y=c_.y;break;
+            case 0:p1 = c.add ( size_def ( 1,0 ) ); p2.x() = c_.x();p2.y()=c.y() ;break;
+            case 1:p1 = c.add ( size_def ( 0,1 ) ); p2.x() = c.x() ;p2.y()=c_.y();break;
+            case 2:p1 = c.sub ( size_def ( 1,0 ) ); p2.x() = c_.x();p2.y()=c.y() ;break;
+            case 3:p1 = c.sub ( size_def ( 0,1 ) ); p2.x() = c.x() ;p2.y()=c_.y();break;
           }
           insidelines.push_back ( rectangle_def ( p1,p2 ) );
 
           switch ( i )
           {
-            case 0:p1 = b.sub ( size_def ( 0,1 ) ); p2.x = b.x ;p2.y=b_.y;break;
-            case 1:p1 = b.add ( size_def ( 1,0 ) ); p2.x = b_.x;p2.y=b.y ;break;
-            case 2:p1 = b.add ( size_def ( 0,1 ) ); p2.x = b.x ;p2.y=b_.y;break;
-            case 3:p1 = b.sub ( size_def ( 1,0 ) ); p2.x = b_.x;p2.y=b.y ;break;
+            case 0:p1 = b.sub ( size_def ( 0,1 ) ); p2.x() = b.x() ;p2.y()=b_.y();break;
+            case 1:p1 = b.add ( size_def ( 1,0 ) ); p2.x() = b_.x();p2.y()=b.y() ;break;
+            case 2:p1 = b.add ( size_def ( 0,1 ) ); p2.x() = b.x() ;p2.y()=b_.y();break;
+            case 3:p1 = b.sub ( size_def ( 1,0 ) ); p2.x() = b_.x();p2.y()=b.y() ;break;
 
           }
           insidelines.push_back ( rectangle_def ( p1,p2 ) );
@@ -758,20 +756,20 @@ class rectangle_complex
 
       for ( typename point_list_t::iterator it = int_qlist.begin(); it != int_qlist.end() ;it++ )
       {
-        if ( pmap.insert ( make_pair ( make_pair ( ( *it ).x-1, ( *it ).y-1 ),nextvertpos ) ).second == true ) ++nextvertpos;
-        if ( pmap.insert ( make_pair ( make_pair ( ( *it ).x-1, ( *it ).y+1 ),nextvertpos ) ).second == true ) ++nextvertpos;
-        if ( pmap.insert ( make_pair ( make_pair ( ( *it ).x+1, ( *it ).y+1 ),nextvertpos ) ).second == true ) ++nextvertpos;
-        if ( pmap.insert ( make_pair ( make_pair ( ( *it ).x+1, ( *it ).y-1 ),nextvertpos ) ).second == true ) ++nextvertpos;
+        if ( pmap.insert ( make_pair ( make_pair ( ( *it ).x()-1, ( *it ).y()-1 ),nextvertpos ) ).second == true ) ++nextvertpos;
+        if ( pmap.insert ( make_pair ( make_pair ( ( *it ).x()-1, ( *it ).y()+1 ),nextvertpos ) ).second == true ) ++nextvertpos;
+        if ( pmap.insert ( make_pair ( make_pair ( ( *it ).x()+1, ( *it ).y()+1 ),nextvertpos ) ).second == true ) ++nextvertpos;
+        if ( pmap.insert ( make_pair ( make_pair ( ( *it ).x()+1, ( *it ).y()-1 ),nextvertpos ) ).second == true ) ++nextvertpos;
       }
 
       uint extVertBeginOffset = nextvertpos;
 
       for ( typename point_list_t::iterator it = ext_qlist.begin(); it != ext_qlist.end() ;it++ )
       {
-        if ( pmap.insert ( make_pair ( make_pair ( ( *it ).x-1, ( *it ).y-1 ),nextvertpos ) ).second == true ) ++nextvertpos;
-        if ( pmap.insert ( make_pair ( make_pair ( ( *it ).x-1, ( *it ).y+1 ),nextvertpos ) ).second == true ) ++nextvertpos;
-        if ( pmap.insert ( make_pair ( make_pair ( ( *it ).x+1, ( *it ).y+1 ),nextvertpos ) ).second == true ) ++nextvertpos;
-        if ( pmap.insert ( make_pair ( make_pair ( ( *it ).x+1, ( *it ).y-1 ),nextvertpos ) ).second == true ) ++nextvertpos;
+        if ( pmap.insert ( make_pair ( make_pair ( ( *it ).x()-1, ( *it ).y()-1 ),nextvertpos ) ).second == true ) ++nextvertpos;
+        if ( pmap.insert ( make_pair ( make_pair ( ( *it ).x()-1, ( *it ).y()+1 ),nextvertpos ) ).second == true ) ++nextvertpos;
+        if ( pmap.insert ( make_pair ( make_pair ( ( *it ).x()+1, ( *it ).y()+1 ),nextvertpos ) ).second == true ) ++nextvertpos;
+        if ( pmap.insert ( make_pair ( make_pair ( ( *it ).x()+1, ( *it ).y()-1 ),nextvertpos ) ).second == true ) ++nextvertpos;
       }
 
       numverts    = pmap.size();
@@ -792,20 +790,20 @@ class rectangle_complex
 
       for ( typename point_list_t::iterator it = int_qlist.begin(); it != int_qlist.end() ;it++ )
       {
-        indlist[indpos+0] = pmap[make_pair ( ( *it ).x-1, ( *it ).y-1 ) ];
-        indlist[indpos+1] = pmap[make_pair ( ( *it ).x-1, ( *it ).y+1 ) ];
-        indlist[indpos+2] = pmap[make_pair ( ( *it ).x+1, ( *it ).y+1 ) ];
-        indlist[indpos+3] = pmap[make_pair ( ( *it ).x+1, ( *it ).y-1 ) ];
+        indlist[indpos+0] = pmap[make_pair ( ( *it ).x()-1, ( *it ).y()-1 ) ];
+        indlist[indpos+1] = pmap[make_pair ( ( *it ).x()-1, ( *it ).y()+1 ) ];
+        indlist[indpos+2] = pmap[make_pair ( ( *it ).x()+1, ( *it ).y()+1 ) ];
+        indlist[indpos+3] = pmap[make_pair ( ( *it ).x()+1, ( *it ).y()-1 ) ];
 
         indpos+=4;
       }
 
       for ( typename point_list_t::iterator it = ext_qlist.begin(); it != ext_qlist.end() ;it++ )
       {
-        indlist[indpos+0] = pmap[make_pair ( ( *it ).x-1, ( *it ).y-1 ) ];
-        indlist[indpos+1] = pmap[make_pair ( ( *it ).x-1, ( *it ).y+1 ) ];
-        indlist[indpos+2] = pmap[make_pair ( ( *it ).x+1, ( *it ).y+1 ) ];
-        indlist[indpos+3] = pmap[make_pair ( ( *it ).x+1, ( *it ).y-1 ) ];
+        indlist[indpos+0] = pmap[make_pair ( ( *it ).x()-1, ( *it ).y()-1 ) ];
+        indlist[indpos+1] = pmap[make_pair ( ( *it ).x()-1, ( *it ).y()+1 ) ];
+        indlist[indpos+2] = pmap[make_pair ( ( *it ).x()+1, ( *it ).y()+1 ) ];
+        indlist[indpos+3] = pmap[make_pair ( ( *it ).x()+1, ( *it ).y()-1 ) ];
 
         indpos+=4;
       }
@@ -871,9 +869,9 @@ class rectangle_complex
       {
         rectangle_def rec = m_inside_rects[i];
 
-        for ( coord_type x = rec.bl.x ; x <= rec.tr.x; x+=2 )
+        for ( coord_type x = rec.bl.x() ; x <= rec.tr.x(); x+=2 )
         {
-          for ( coord_type y = rec.bl.y ; y <= rec.tr.y; y+=2 )
+          for ( coord_type y = rec.bl.y() ; y <= rec.tr.y(); y+=2 )
           {
             qlist.push_back ( point_def ( x,y ) );
           }
