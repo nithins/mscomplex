@@ -71,29 +71,12 @@ template <typename id_type>
 };
 
 template <typename id_type>
-    struct do_nothing_functor
-{
-  void operator()
-      (
-          id_type
-          )
-  {
-  }
 
-  void operator() ( id_type , id_type )
-  {
-  }
-};
-
-
-template <typename id_type,typename add_to_cancellable_list_ftor_t>
-
-    bool lowestPairableCofacet
+    bool minPairable_cf
     (
         IDiscreteDataset<id_type> *dataset,
         id_type cellId,
-        id_type& pairid,
-        add_to_cancellable_list_ftor_t add_to_cancellable_list_ftor
+        id_type& pairid
         )
 {
   id_type cofacets[20];
@@ -148,21 +131,10 @@ template <typename id_type,typename add_to_cancellable_list_ftor_t>
       pairid = cofacets[i];
 
   }
-
-  if ( pairid_usable &&
-       dataset->isFakeBoundryCell ( cellId )
-       && (!dataset->isFakeBoundryCell ( pairid ))
-       )
-  {
-    add_to_cancellable_list_ftor ( cellId,pairid );
-    pairid_usable = false;
-  }
   return pairid_usable;
 }
 
-/**
- * Ensure that the cell data in [start,end) are of the same dim.
- */
+
 
 template <typename id_type,typename cell_iter_type,typename add_to_cancellable_list_ftor_t >
     void assignGradient
@@ -179,9 +151,13 @@ template <typename id_type,typename cell_iter_type,typename add_to_cancellable_l
 
     id_type pairid;
 
-    if ( lowestPairableCofacet ( dataset,*iter ,pairid,add_to_cancellable_list_ftor ) == true )
+    if ( minPairable_cf ( dataset,*iter ,pairid ) == true )
     {
-      dataset->pairCells ( pairid,*iter );
+      if ( dataset->isFakeBoundryCell ( *iter) &&
+           (!dataset->isFakeBoundryCell ( pairid)))
+        add_to_cancellable_list_ftor ( *iter,pairid );
+      else
+        dataset->pairCells ( pairid,*iter );
     }
     else
     {
@@ -230,7 +206,7 @@ template
 
   while ( !cell_queue.empty() )
   {
-    id_t top_cell = cell_queue.front();
+    id_type top_cell = cell_queue.front();
 
     cell_queue.pop();
 
@@ -250,7 +226,7 @@ template
       {
         if ( !dataset->isCellExterior ( cets[i] ) )
         {
-          id_t next_cell = dataset->getCellPairId ( cets[i] );
+          id_type next_cell = dataset->getCellPairId ( cets[i] );
 
           if ( dataset->getCellDim ( top_cell ) ==
                dataset->getCellDim ( next_cell ) &&

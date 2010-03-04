@@ -1,5 +1,7 @@
 #include <grid_dataset.h>
 
+#include <discreteMorseAlgorithm.h>
+
 #include <vector>
 
 typedef GridDataset::cellid_t cellid_t;
@@ -94,7 +96,6 @@ uint GridDataset::getCellFacets ( cellid_t c,cellid_t *f) const
   switch(getCellDim(c))
   {
   case 0:
-    throw std::logic_error("zero dim cell has no facets");
     return 0;
   case 1:
     f[0] = cellid_t(c[0]+d[0],c[1]+d[1]);
@@ -133,15 +134,14 @@ uint GridDataset::getCellCofacets ( cellid_t c,cellid_t *cf) const
     cf_ct =  2;
     break;
   case 2:
-    throw std::logic_error("2 dim cell has no co-facets");
     return 0;
   default:
     throw std::logic_error("impossible dim");
     return 0;
   }
 
-  uint cf_nv_pos = 0; // position in cf[] where the next valid cf
-                      // should be placed
+  // position in cf[] where the next valid cf should be placed
+  uint cf_nv_pos = 0;
 
   for( uint i = 0 ;i < cf_ct;++i)
     if(m_ext_rect.contains(cf[i]))
@@ -173,7 +173,7 @@ bool GridDataset::isCellMarked ( cellid_t c ) const
 
 bool GridDataset::isCellCritical ( cellid_t c) const
 {
-  return (m_cell_flags(c) == CELLFLAG_CRITCAL);
+  return (m_cell_flags(c) & CELLFLAG_CRITCAL);
 }
 
 void GridDataset::pairCells ( cellid_t c,cellid_t p)
@@ -188,6 +188,8 @@ void GridDataset::pairCells ( cellid_t c,cellid_t p)
 void GridDataset::markCellCritical ( cellid_t c )
 {
   m_cell_flags(c) = (eCellFlags)((uint) m_cell_flags(c)|CELLFLAG_CRITCAL);
+
+  m_critical_cells.push_back(c);
 }
 
 bool GridDataset::isTrueBoundryCell ( cellid_t c ) const
@@ -204,4 +206,124 @@ bool GridDataset::isCellExterior ( cellid_t c ) const
 {
   return (!m_rect.contains(c) && m_ext_rect.contains(c));
 }
+
+void GridDataset::connectCps ( cellid_t c1, cellid_t c2)
+{
+
+  if(getCellDim(c1) <getCellDim(c2) )
+    std::swap(c1,c2);
+
+  if(getCellDim(c1) != getCellDim(c2)+1)
+    throw std::logic_error("must connect i,i+1 cp (or vice versa)");
+
+  uint cp1_ind = m_msgraph.m_id_cp_map[c1];
+  uint cp2_ind = m_msgraph.m_id_cp_map[c2];
+
+  critpt_t *cp1 = m_msgraph.m_cps[cp1_ind];
+  critpt_t *cp2 = m_msgraph.m_cps[cp2_ind];
+
+  cp1->des.insert(cp2_ind);
+  cp2->asc.insert(cp1_ind);
+}
+
+void  GridDataset::assignGradients()
+{
+
+  // determine all the pairings of all cells in m_rect
+  for(cell_coord_t y = m_rect.bottom(); y <= m_rect.top();y += 1)
+    for(cell_coord_t x = m_rect.left(); x <= m_rect.right();x += 1)
+    {
+      cellid_t c(x,y);
+      cellid_t p;
+
+      if (isCellMarked(c))  continue;
+
+      if(minPairable_cf(this,c,p))
+        pairCells(c,p);
+      else
+        markCellCritical(c);
+    }
+
+  // mark all on boundry as critical
+
+  for(cell_coord_t x = m_rect.left(); x <= m_rect.right();x += 1)
+  {
+    cellid_t bcs[] = {cellid_t(x,m_rect.bottom()),cellid_t(x,m_rect.top())};
+
+    for(uint i = 0 ; i <sizeof(bcs)/sizeof(cellid_t);++i)
+    {
+      if(isCellCritical(bcs[i])) continue;
+
+      markCellCritical(bcs[i]);
+      markCellCritical(getCellPairId(bcs[i]));
+    }
+
+  }
+
+  for(cell_coord_t y = m_rect.bottom()+1; y < m_rect.top()-1;y += 1)
+  {
+    cellid_t bcs[] = {cellid_t(m_rect.left(),y),cellid_t(m_rect.right(),y)};
+
+    for(uint i = 0 ; i <sizeof(bcs)/sizeof(cellid_t);++i)
+    {
+      if(isCellCritical(bcs[i])) continue;
+
+      markCellCritical(bcs[i]);
+      markCellCritical(getCellPairId(bcs[i]));
+    }
+  }
+}
+
+uint  GridDataset::getNumCriticalPoints()
+{
+  return m_critical_cells.size();
+}
+
+inline void add_to_grad_tree_proxy(GridDataset::cellid_t )
+{
+  // just do nothing
+  return;
+}
+
+void  GridDataset::computeDiscs()
+{
+
+  addCriticalPointsToMSComplex
+      (&m_msgraph,this,m_critical_cells.begin(),m_critical_cells.end());
+
+  for ( cellid_list_t::iterator it = m_critical_cells.begin() ;
+        it != m_critical_cells.end();++it)
+  {
+    track_gradient_tree_bfs
+        (this,*it,GRADIENT_DIR_DOWNWARD,
+         add_to_grad_tree_proxy,
+         boost::bind(&GridDataset::connectCps,this,*it,_1));
+  }
+
+  // mark all the boundry cps as boundry cancellable
+
+  for(cell_coord_t x = m_rect.left(); x <= m_rect.right();x += 1)
+  {
+    cellid_t bcs[] = {cellid_t(x,m_rect.bottom()),cellid_t(x,m_rect.top())};
+
+    for(uint i = 0 ; i <sizeof(bcs)/sizeof(cellid_t);++i)
+    {
+      uint cp_idx = m_msgraph.m_id_cp_map[bcs[i]];
+      m_msgraph.m_cps[cp_idx]->isBoundryCancelable = true;
+    }
+  }
+
+  for(cell_coord_t y = m_rect.bottom()+1; y < m_rect.top()-1;y += 1)
+  {
+    cellid_t bcs[] = {cellid_t(m_rect.left(),y),cellid_t(m_rect.right(),y)};
+
+    for(uint i = 0 ; i <sizeof(bcs)/sizeof(cellid_t);++i)
+    {
+      uint cp_idx = m_msgraph.m_id_cp_map[bcs[i]];
+      m_msgraph.m_cps[cp_idx]->isBoundryCancelable = true;
+    }
+  }
+
+}
+
 

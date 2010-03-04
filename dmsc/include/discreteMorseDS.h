@@ -129,8 +129,6 @@ public:
       }
       os<<"}";
     }
-
-
   };
 
   std::map<id_t,uint> m_id_cp_map;

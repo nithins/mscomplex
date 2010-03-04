@@ -19,8 +19,8 @@
  ***************************************************************************/
 
 
-#ifndef __QUAD_DATASET_H_INCLUDED_
-#define __QUAD_DATASET_H_INCLUDED_
+#ifndef __GRID_DATASET_H_INCLUDED_
+#define __GRID_DATASET_H_INCLUDED_
 
 #include <vector>
 
@@ -33,85 +33,106 @@
 
 
 
-class GridDataset:public IDiscreteDataset_renderable<uint,double>
+class GridDataset:
+    public IDiscreteDataset_renderable<rectangle_complex<int>::point_def,double>
 {
 
 
-  public:
+public:
 
   enum eCellFlags
   {
     CELLFLAG_UNKNOWN = 0,
     CELLFLAG_PAIRED  = 1,
-    CELLFLAG_CRITCAL = 2
+    CELLFLAG_CRITCAL = 2,
   };
 
 
-    typedef int                                    cell_coord_t;
-    typedef rectangle_complex<uint>                rect_cmplx_t;
-    typedef rectangle_complex<uint>::rectangle_def rect_t;
-    typedef rectangle_complex<uint>::point_def     point_t;
-    typedef rectangle_complex<uint>::point_def     cellid_t;
-    typedef rectangle_complex<uint>::size_def      rect_size_t;
+  typedef int                              cell_coord_t;
+  typedef rectangle_complex<cell_coord_t>  rect_cmplx_t;
+  typedef rect_cmplx_t::rectangle_def      rect_t;
+  typedef rect_cmplx_t::point_def          cellid_t;
+  typedef rect_cmplx_t::size_def           rect_size_t;
 
-    typedef boost::multi_array<double,2>           varray_t;
-    typedef boost::multi_array<cellid_t,2>         cellpair_array_t;
-    typedef boost::multi_array<eCellFlags,2>       cellflag_array_t;
+  typedef std::vector<cellid_t>            cellid_list_t;
+  typedef std::pair<cellid_t,cellid_t>     cellid_pair_t;
+  typedef std::vector<cellid_pair_t>       cellid_pair_list_t;
 
-  private:
-
-    rect_t  m_rect;
-    rect_t  m_ext_rect;
-
-    varray_t         m_vertex_fns; // defined on the vertices of bounding rect
-    cellpair_array_t m_cell_pairs;
-    cellflag_array_t m_cell_flags;
-
-  public:
-
-    // initialization of the dataset
-
-    GridDataset(const rect_t &r,
-                const rect_t &e);
-
-    void set_datarow(const double *, uint rownum);
-
-    static bool isPoint(cellid_t c);
-
-    // dataset interface
-  public:
-
-    virtual cellid_t   getCellPairId ( cellid_t ) const;
-
-    virtual bool   ptLt ( cellid_t ,cellid_t  ) const;
-
-    virtual uint   getCellPoints ( cellid_t ,cellid_t  * ) const;
-
-    virtual uint   getCellFacets ( cellid_t ,cellid_t * ) const;
-
-    virtual uint   getCellCofacets ( cellid_t ,cellid_t * ) const;
-
-    virtual bool   isPairOrientationCorrect ( cellid_t c, cellid_t p) const;
-
-    virtual bool   isCellMarked ( cellid_t c ) const;
-
-    virtual bool   isCellCritical ( cellid_t c) const;
-
-    virtual void   pairCells ( cellid_t c,cellid_t p);
-
-    virtual void   markCellCritical ( cellid_t c );
-
-    virtual uint   getCellDim ( cellid_t c ) const;
-
-    virtual uint   getMaxCellDim() const;
-
-    virtual bool   isTrueBoundryCell ( cellid_t c ) const;
-
-    virtual bool   isFakeBoundryCell ( cellid_t c ) const;
-
-    virtual bool   isCellExterior ( cellid_t c ) const;
+  typedef MSComplex<cellid_t>              mscomplex_t;
+  typedef mscomplex_t::critical_point      critpt_t;
+  typedef critpt_t::connection_t           critpt_conn_t;
 
 
+  typedef boost::multi_array<double,2>     varray_t;
+  typedef boost::multi_array<cellid_t,2>   cellpair_array_t;
+  typedef boost::multi_array<eCellFlags,2> cellflag_array_t;
+
+private:
+
+  rect_t  m_rect;
+  rect_t  m_ext_rect;
+
+  varray_t         m_vertex_fns; // defined on the vertices of bounding rect
+  cellpair_array_t m_cell_pairs;
+  cellflag_array_t m_cell_flags;
+  cellid_list_t    m_critical_cells;
+
+  mscomplex_t      m_msgraph;
+
+public:
+
+  // initialization of the dataset
+
+  GridDataset(const rect_t &r,
+              const rect_t &e);
+
+  void set_datarow(const double *, uint rownum);
+
+  static bool isPoint(cellid_t c);
+
+  // actual algorithm work
+public:
+
+  void  assignGradients();
+
+  uint  getNumCriticalPoints();
+
+  void  computeDiscs();
+
+  // dataset interface
+public:
+
+  virtual cellid_t   getCellPairId ( cellid_t ) const;
+
+  virtual bool   ptLt ( cellid_t ,cellid_t  ) const;
+
+  virtual uint   getCellPoints ( cellid_t ,cellid_t  * ) const;
+
+  virtual uint   getCellFacets ( cellid_t ,cellid_t * ) const;
+
+  virtual uint   getCellCofacets ( cellid_t ,cellid_t * ) const;
+
+  virtual bool   isPairOrientationCorrect ( cellid_t c, cellid_t p) const;
+
+  virtual bool   isCellMarked ( cellid_t c ) const;
+
+  virtual bool   isCellCritical ( cellid_t c) const;
+
+  virtual void   pairCells ( cellid_t c,cellid_t p);
+
+  virtual void   markCellCritical ( cellid_t c );
+
+  virtual uint   getCellDim ( cellid_t c ) const;
+
+  virtual uint   getMaxCellDim() const;
+
+  virtual bool   isTrueBoundryCell ( cellid_t c ) const;
+
+  virtual bool   isFakeBoundryCell ( cellid_t c ) const;
+
+  virtual bool   isCellExterior ( cellid_t c ) const;
+
+  virtual void   connectCps ( cellid_t c1, cellid_t c2) ;
 
 };
 
