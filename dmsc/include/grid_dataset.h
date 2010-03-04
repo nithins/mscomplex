@@ -34,7 +34,7 @@
 
 
 class GridDataset:
-    public IDiscreteDataset_renderable<rectangle_complex<int>::point_def,double>
+    public IDiscreteDataset<rectangle_complex<int>::point_def>
 {
 
 
@@ -49,6 +49,7 @@ public:
 
 
   typedef int                              cell_coord_t;
+  typedef double                           cell_fn_t;
   typedef rectangle_complex<cell_coord_t>  rect_cmplx_t;
   typedef rect_cmplx_t::rectangle_def      rect_t;
   typedef rect_cmplx_t::point_def          cellid_t;
@@ -63,7 +64,7 @@ public:
   typedef critpt_t::connection_t           critpt_conn_t;
 
 
-  typedef boost::multi_array<double,2>     varray_t;
+  typedef boost::multi_array<cell_fn_t,2>  varray_t;
   typedef boost::multi_array<cellid_t,2>   cellpair_array_t;
   typedef boost::multi_array<eCellFlags,2> cellflag_array_t;
 
@@ -87,6 +88,10 @@ public:
               const rect_t &e);
 
   void set_datarow(const double *, uint rownum);
+
+  cell_fn_t get_cell_fn(cellid_t c) const;
+
+  void set_cell_fn(cellid_t c,cell_fn_t f);
 
   static bool isPoint(cellid_t c);
 
@@ -118,11 +123,13 @@ public:
 
   virtual bool   isCellCritical ( cellid_t c) const;
 
+  virtual bool   isCellPaired( cellid_t c) const;
+
   virtual void   pairCells ( cellid_t c,cellid_t p);
 
   virtual void   markCellCritical ( cellid_t c );
 
-  virtual uint   getCellDim ( cellid_t c ) const;
+  inline virtual uint   getCellDim ( cellid_t c ) const;
 
   virtual uint   getMaxCellDim() const;
 
@@ -134,7 +141,44 @@ public:
 
   virtual void   connectCps ( cellid_t c1, cellid_t c2) ;
 
+  virtual std::string  getCellFunctionDescription ( cellid_t pt ) const;
+
+  virtual std::string getCellDescription ( cellid_t cellid ) const;
+
+  // misc functions
+public:
+  inline const mscomplex_t & get_ms_complex()
+  {
+    return m_msgraph;
+  }
+
+  inline static uint s_getCellDim ( cellid_t c )
+  {
+    return ((c[0]&0x01)+(c[1]&0x01));
+  }
+
+  inline rect_t get_rect()
+  {
+    return m_rect;
+  }
+
+  inline rect_t get_ext_rect()
+  {
+    return m_ext_rect;
+  }
+
+  // dataset renderable interface
+public:
+  void getCellCoord(cellid_t c,double &x,double &y,double &z);
+
 };
+
+inline uint GridDataset::getCellDim ( cellid_t c ) const
+{
+  return s_getCellDim(c);
+}
+
+
 
 
 #endif

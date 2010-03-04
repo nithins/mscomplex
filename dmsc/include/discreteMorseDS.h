@@ -69,7 +69,7 @@ public:
 
   virtual std::string  getCellFunctionDescription ( id_type pt ) const = 0;
 
-  virtual std::string getCellDescription ( uint cellid ) const =0;
+  virtual std::string getCellDescription ( id_type cellid ) const =0;
 
 };
 
@@ -145,7 +145,7 @@ public:
   cp_ptr_list_t m_cps;
 
 
-  void print_connections(std::ostream & os)
+  void print_connections(std::ostream & os) const
   {
     for(uint i = 0 ; i < m_cp_count;++i)
     {

@@ -18,10 +18,13 @@ GridDataset::GridDataset(const rect_t &r,const rect_t &e):
 
   m_vertex_fns.resize(boost::extents[1+s[0]/2][1+s[1]/2]);
 
-  for(int i = 0 ; i< 1+s[0];++i)
-    std::fill(m_cell_flags[i].begin(),m_cell_flags[i].end(),CELLFLAG_UNKNOWN);
+  m_cell_flags.resize((boost::extents[1+s[0]][1+s[1]]));
 
+  m_cell_pairs.resize((boost::extents[1+s[0]][1+s[1]]));
 
+  for(int y = 0 ; y<=s[1];++y)
+    for(int x = 0 ; x<=s[0];++x)
+      m_cell_flags[x][y] = CELLFLAG_UNKNOWN;
 }
 
 void GridDataset::set_datarow(const double *data, uint rownum)
@@ -43,17 +46,43 @@ bool GridDataset::ptLt ( cellid_t c1,cellid_t c2 ) const
   if(!isPoint(c1) || !isPoint(c2))
     throw std::logic_error("this is used only to compare points");
 
-  std::for_each(c1.begin(),c1.end(),
+  cellid_t c1_,c2_;
+
+  std::transform(c1.begin(),c1.end(),c1_.begin(),
                 boost::bind(shift_right<cell_coord_t,uint>,_1,1));
 
-  std::for_each(c2.begin(),c2.end(),
+  std::transform(c2.begin(),c2.end(),c2_.begin(),
                 boost::bind(shift_right<cell_coord_t,uint>,_1,1));
 
-  if(m_vertex_fns(c1) != m_vertex_fns(c2))
-    return m_vertex_fns(c1) < m_vertex_fns(c2);
+  if(m_vertex_fns(c1_) != m_vertex_fns(c2_))
+    return m_vertex_fns(c1_) < m_vertex_fns(c2_);
 
   return c1<c2;
 
+}
+
+GridDataset::cell_fn_t GridDataset::get_cell_fn(cellid_t c) const
+{
+  if(!isPoint(c))
+    throw std::logic_error("incorrect cell type requsting vert fn value");
+
+  c[0] /=2;
+  c[1] /=2;
+
+  double ret = m_vertex_fns(c);
+
+  return ret;
+}
+
+void GridDataset::set_cell_fn(cellid_t c,cell_fn_t f)
+{
+  if(!isPoint(c))
+    throw std::logic_error("incorrect cell type requsting vert fn value");
+
+  c[0] /=2;
+  c[1] /=2;
+
+  m_vertex_fns(c) = f;
 }
 
 bool GridDataset::isPoint(cellid_t c)
@@ -151,11 +180,6 @@ uint GridDataset::getCellCofacets ( cellid_t c,cellid_t *cf) const
 
 }
 
-uint GridDataset::getCellDim ( cellid_t c ) const
-{
-  return (c[0]&0x01 + c[1]&0x01);
-}
-
 uint GridDataset::getMaxCellDim() const
 {
   return 2;
@@ -174,6 +198,10 @@ bool GridDataset::isCellMarked ( cellid_t c ) const
 bool GridDataset::isCellCritical ( cellid_t c) const
 {
   return (m_cell_flags(c) & CELLFLAG_CRITCAL);
+}
+bool GridDataset::isCellPaired(  cellid_t c) const
+{
+  return (m_cell_flags(c) & CELLFLAG_PAIRED);
 }
 
 void GridDataset::pairCells ( cellid_t c,cellid_t p)
@@ -226,6 +254,27 @@ void GridDataset::connectCps ( cellid_t c1, cellid_t c2)
   cp2->asc.insert(cp1_ind);
 }
 
+std::string GridDataset::getCellFunctionDescription ( cellid_t c ) const
+{
+  std::stringstream ss;
+
+  ((std::ostream &)ss)<<c;
+
+  return ss.str();
+
+}
+
+std::string GridDataset::getCellDescription ( cellid_t c ) const
+{
+
+  std::stringstream ss;
+
+  ((std::ostream &)ss)<<c;
+
+  return ss.str();
+
+}
+
 void  GridDataset::assignGradients()
 {
 
@@ -233,18 +282,24 @@ void  GridDataset::assignGradients()
   for(cell_coord_t y = m_rect.bottom(); y <= m_rect.top();y += 1)
     for(cell_coord_t x = m_rect.left(); x <= m_rect.right();x += 1)
     {
-      cellid_t c(x,y);
-      cellid_t p;
+      cellid_t c(x,y),p;
 
-      if (isCellMarked(c))  continue;
+      if (isCellMarked(c))
+        continue;
 
       if(minPairable_cf(this,c,p))
         pairCells(c,p);
-      else
-        markCellCritical(c);
     }
 
-  // mark all on boundry as critical
+  for(cell_coord_t y = m_rect.bottom(); y <= m_rect.top();y += 1)
+    for(cell_coord_t x = m_rect.left(); x <= m_rect.right();x += 1)
+    {
+      cellid_t c(x,y);
+
+      if (!isCellMarked(c)) markCellCritical(c);
+    }
+
+  // mark artificial boundry as critical
 
   for(cell_coord_t x = m_rect.left(); x <= m_rect.right();x += 1)
   {
@@ -253,6 +308,8 @@ void  GridDataset::assignGradients()
     for(uint i = 0 ; i <sizeof(bcs)/sizeof(cellid_t);++i)
     {
       if(isCellCritical(bcs[i])) continue;
+
+      if(isTrueBoundryCell(bcs[i])) continue;
 
       markCellCritical(bcs[i]);
       markCellCritical(getCellPairId(bcs[i]));
@@ -267,6 +324,8 @@ void  GridDataset::assignGradients()
     for(uint i = 0 ; i <sizeof(bcs)/sizeof(cellid_t);++i)
     {
       if(isCellCritical(bcs[i])) continue;
+
+      if(isTrueBoundryCell(bcs[i])) continue;
 
       markCellCritical(bcs[i]);
       markCellCritical(getCellPairId(bcs[i]));
@@ -323,6 +382,20 @@ void  GridDataset::computeDiscs()
       m_msgraph.m_cps[cp_idx]->isBoundryCancelable = true;
     }
   }
+}
+
+void GridDataset::getCellCoord(cellid_t c,double &x,double &y,double &z)
+{
+  x = c[0];  y = 0;  z = c[1];
+
+  cellid_t pts[20];
+
+  uint pts_ct = getCellPoints(c,pts);
+
+  for( int j = 0 ; j <pts_ct ;++j)
+    y += get_cell_fn(pts[j]);
+
+  y /= pts_ct;
 
 }
 
