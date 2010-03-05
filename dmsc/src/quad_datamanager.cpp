@@ -241,7 +241,8 @@ void QuadDataManager::workPiece ( DataPiece *dp )
 
   dp->q.getBoundryCancellablePairs(dp->cancellable_boundry_pairs);
 
-  //initDataPieceForRender(dp);
+  if(m_single_threaded_mode)
+    initDataPieceForRender(dp);
 
   dp->q.destroy();
 }
@@ -584,8 +585,6 @@ QuadDataManager::QuadDataManager
   _LOG ( "Finished Processing peices" );
   _LOG ( "==========================" );
 
-  exit(0);
-
   for(uint i = 0 ; i <m_pieces.size();++i)
   {
     DataPiece *dp = m_pieces[i];
@@ -883,11 +882,14 @@ void  DataPiece::create_cp_rens(double *data,uint size_x,uint size_y)
 
     crit_label_locations[dim].push_back(glutils::vertex_t(x,y,z) );
 
-    crit_pt_idxs[dim].push_back(glutils::point_idx_t(crit_locations.size()));
-
-    crit_ms_idx_ren_idx_map[i] = crit_locations.size();
-
     crit_locations.push_back(glutils::vertex_t(x,y,z));
+
+    crit_ms_idx_ren_idx_map[i] = crit_locations.size()-1;
+
+    if(this->mscomplex->m_cps[i]->isBoundryCancelable)
+      continue;
+
+    crit_pt_idxs[dim].push_back(glutils::point_idx_t(crit_locations.size()-1));
   }
 
   glutils::bufobj_ptr_t crit_loc_bo = glutils::make_buf_obj(crit_locations);
