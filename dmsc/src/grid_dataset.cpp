@@ -244,6 +244,12 @@ void GridDataset::connectCps ( cellid_t c1, cellid_t c2)
   if(getCellDim(c1) != getCellDim(c2)+1)
     throw std::logic_error("must connect i,i+1 cp (or vice versa)");
 
+  if(m_msgraph.m_id_cp_map.find(c1) == m_msgraph.m_id_cp_map.end())
+    throw std::logic_error(_SSTR("cell not in id_cp_map c1="<<c1));
+
+  if(m_msgraph.m_id_cp_map.find(c2) == m_msgraph.m_id_cp_map.end())
+    throw std::logic_error(_SSTR("cell not in id_cp_map c2="<<c2));
+
   uint cp1_ind = m_msgraph.m_id_cp_map[c1];
   uint cp2_ind = m_msgraph.m_id_cp_map[c2];
 
@@ -396,7 +402,6 @@ void GridDataset::getCellCoord(cellid_t c,double &x,double &y,double &z)
     y += get_cell_fn(pts[j]);
 
   y /= pts_ct;
-
 }
 
 

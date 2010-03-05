@@ -198,6 +198,8 @@ GridDataManager::GridDataManager
     dp->create_cp_rens();
 
     dp->create_grad_rens();
+
+    dp->create_surf_ren();
   }
 
   create_ui();
@@ -246,7 +248,7 @@ void GridDataManager::renderDataPiece ( GridDataPiece *dp ) const
   if ( dp->m_bShowSurface && dp->ren_surf)
   {
     glColor3f ( 0.75,0.75,0.75 );
-    dp->ren_surf->render_triangles();
+    dp->ren_surf->render();
   }
 
   if ( dp->m_bShowGrad && dp->ren_grad)
@@ -296,6 +298,10 @@ int GridDataManager::Render() const
 {
   m_controller->Render();
 
+  glPushAttrib(GL_ENABLE_BIT);
+
+  glEnable(GL_NORMALIZE);
+
   glTranslatef(-1,0,-1);
 
   glScalef(0.5/(double) m_size_x,0.1,0.5/(double) m_size_y);
@@ -304,6 +310,8 @@ int GridDataManager::Render() const
   {
     renderDataPiece ( m_pieces[i] );
   }
+
+  glPopAttrib();
 
   return 0;
 }
@@ -512,6 +520,50 @@ void GridDataPiece::create_grad_rens()
   ren_grad = glutils::create_buffered_lines_ren
              (glutils::make_buf_obj(cell_locations),
               glutils::make_buf_obj(pair_idxs),
+              glutils::make_buf_obj());
+
+
+}
+
+void GridDataPiece::create_surf_ren()
+{
+  rect_t r = g.get_rect();
+
+  std::vector<glutils::vertex_t>      point_locs;
+  std::vector<glutils::tri_idx_t>     tri_idxs;
+
+
+  for(cell_coord_t y = r.bottom(); y<=r.top(); y+=2)
+    for(cell_coord_t x = r.left(); x<=r.right(); x+=2)
+    {
+      cellid_t c = cellid_t(x,y);
+
+      double x,y,z;
+
+      g.getCellCoord(c,x,y,z);
+
+      point_locs.push_back(glutils::vertex_t(x,y,z));
+    }
+
+  rect_size_t s = r.size();
+
+  glutils::idx_t p1=0,p2=1,p3=s[0]/2+2,p4 = s[0]/2+1;
+
+  for(cell_coord_t y = r.bottom()+1; y<r.top(); y+=2)
+  {
+    for(cell_coord_t x = r.left()+1; x<r.right(); x+=2)
+    {
+      tri_idxs.push_back(glutils::tri_idx_t(p1,p4,p3));
+      tri_idxs.push_back(glutils::tri_idx_t(p1,p3,p2));
+
+      ++p1;++p2;++p3;++p4;
+    }
+    ++p1;++p2;++p3;++p4;
+  }
+
+  ren_surf = glutils::create_buffered_triangles_ren
+             (glutils::make_buf_obj(point_locs),
+              glutils::make_buf_obj(tri_idxs),
               glutils::make_buf_obj());
 
 

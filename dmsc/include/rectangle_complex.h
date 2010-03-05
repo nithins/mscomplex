@@ -66,7 +66,7 @@ class rectangle_complex
       point_def ( const coord_type &x,const coord_type &y ) :
           two_tuple_t<coord_type>(x,y){}
 
-      point_def () :two_tuple_t<coord_type>(0,0){}
+      point_def () :two_tuple_t<coord_type>(-1,-1){}
 
       static point_def add ( const point_def & p,const size_def & s )
       {

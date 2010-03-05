@@ -46,6 +46,7 @@ struct GridDataPiece
 {
   typedef GridDataset::cell_coord_t cell_coord_t;
   typedef GridDataset::rect_t rect_t;
+  typedef GridDataset::rect_size_t rect_size_t;
   typedef GridDataset::cellid_t cellid_t;
   typedef GridDataset::critpt_conn_t conn_t;
 
@@ -59,16 +60,16 @@ struct GridDataPiece
   bool m_bShowMsGraph;
   bool m_bShowGrad;
 
-  ArrayRenderer<cellid_t ,double> *ren_surf;
+  glutils::renderable_t  *ren_surf;
 
-  glutils::renderable_t               *ren_grad;
-  glutils::renderable_t               *ren_cp_labels[3];
-  glutils::renderable_t               *ren_cp[3];
-  glutils::renderable_t               *ren_cp_conns[2];
+  glutils::renderable_t  *ren_grad;
+  glutils::renderable_t  *ren_cp_labels[3];
+  glutils::renderable_t  *ren_cp[3];
+  glutils::renderable_t  *ren_cp_conns[2];
 
   void create_cp_rens();
-
   void create_grad_rens();
+  void create_surf_ren();
 
   GridDataPiece ( rect_t r, rect_t e) ;
 
