@@ -427,6 +427,11 @@ void  QuadDataset::addCancellablePair ( uint c1,uint c2 )
 // dataset interface
 uint QuadDataset::getCellPairId ( uint cellid ) const
 {
+
+  if(getCell ( cellid )->marked ==false)
+    throw std::logic_error("this cell has not been marked");
+
+
   return getCellid ( getCell ( cellid )->pair );
 }
 

@@ -155,7 +155,10 @@ template <typename id_type,typename cell_iter_type,typename add_to_cancellable_l
     {
       if ( dataset->isFakeBoundryCell ( *iter) &&
            (!dataset->isFakeBoundryCell ( pairid)))
+      {
         add_to_cancellable_list_ftor ( *iter,pairid );
+        dataset->markCellCritical ( *iter );
+      }
       else
         dataset->pairCells ( pairid,*iter );
     }
