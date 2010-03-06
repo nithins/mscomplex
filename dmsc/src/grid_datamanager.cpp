@@ -445,7 +445,7 @@ void  GridDataPiece::create_cp_rens()
   std::vector<glutils::line_idx_t>    crit_conn_idxs[2];
   std::map<uint,uint>                 crit_ms_idx_ren_idx_map;
 
-  for(uint i = 0; i < g.get_ms_complex().m_cp_count; ++i)
+  for(uint i = 0; i < g.get_ms_complex().m_cps.size(); ++i)
   {
     if(g.get_ms_complex().m_cps[i]->isCancelled)
       continue;
@@ -487,7 +487,7 @@ void  GridDataPiece::create_cp_rens()
                 glutils::make_buf_obj());
   }
 
-  for(uint i = 0; i < g.get_ms_complex().m_cp_count; ++i)
+  for(uint i = 0; i < g.get_ms_complex().m_cps.size(); ++i)
   {
     if(g.get_ms_complex().m_cps[i]->isCancelled)
       continue;

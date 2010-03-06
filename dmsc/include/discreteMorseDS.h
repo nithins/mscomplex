@@ -111,11 +111,9 @@ public:
   
   cp_ptr_list_t m_cps;
   id_cp_map_t   m_id_cp_map;
-  u_int         m_cp_count;
 
   MSComplex()
   {
-    m_cp_count = 0;
   }
   
   void print_connections
@@ -136,7 +134,7 @@ public:
   
   void print_connections(std::ostream & os) const
   {
-    for(uint i = 0 ; i < m_cp_count;++i)
+    for(uint i = 0 ; i < m_cps.size();++i)
     {
       os<<"des(";
       if(m_cps[i]->isBoundryCancelable)

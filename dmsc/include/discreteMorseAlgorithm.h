@@ -252,7 +252,6 @@ template <typename id_t,typename cpiter_t>
   typedef typename std::map<id_t,uint>              id_cp_map_t;
 
   msc->m_cps.resize(end-begin);
-  msc->m_cp_count = end-begin;
 
   uint pos = 0;
 
@@ -489,7 +488,7 @@ template <typename id_t>
     using boost::bind;
 
 
-    uint num_vert = msc->m_cp_count ;
+    uint num_vert = msc->m_cps.size() ;
 
     uint *sorted_verts = new uint[num_vert];
 
@@ -588,11 +587,9 @@ template <typename id_t>
 template <typename id_t,typename unicellid_t,typename converter_ftor_t >
     void convertMSComplexToGeneric ( const MSComplex<id_t> *ms_in,MSComplex<unicellid_t> *&ms_out,converter_ftor_t converter_ftor )
 {
-  ms_out->m_cps.resize(ms_in->m_cp_count);
+  ms_out->m_cps.resize(ms_in->m_cps.size());
 
-  ms_out->m_cp_count = ms_in->m_cp_count;
-
-  for ( uint i = 0 ; i< ms_in->m_cp_count;i++ )
+  for ( uint i = 0 ; i< ms_in->m_cps.size();i++ )
   {
     ms_out->m_cps[i] = new typename MSComplex<unicellid_t >::critical_point;
 
@@ -636,7 +633,7 @@ template <typename id_t>
 
   std::set<uint> common_boundry_cps;
 
-  for(uint i = 0 ; i <msc2->m_cp_count;++i)
+  for(uint i = 0 ; i <msc2->m_cps.size();++i)
   {
     critical_point_t *src_cp = msc2->m_cps[i];
 
@@ -672,13 +669,10 @@ template <typename id_t>
     }
   }
 
-
-  msc1->m_cp_count = msc1->m_cps.size();
-
   // copy over the ascending descending connections..
   // careful not duplicate boundry connections.
 
-  for(uint i = 0 ; i <msc2->m_cp_count;++i)
+  for(uint i = 0 ; i <msc2->m_cps.size();++i)
   {
     critical_point_t *src_cp = msc2->m_cps[i];
 
@@ -705,13 +699,13 @@ template <typename id_t>
       conn_it != src_asc_des[j]->end(); ++conn_it)
       {
 
-        if(*conn_it >= msc2->m_cp_count)
+        if(*conn_it >= msc2->m_cps.size())
         {
           std::stringstream ss;
 
           ss<<"invalid idx in msc2"<<std::endl;
           ss<<"*conn_it"<<*conn_it;
-          ss<<"msc2->m_cp_count"<<msc2->m_cp_count;
+          ss<<"msc2->m_cps.size()"<<msc2->m_cps.size();
 
           throw std::logic_error(ss.str());
         }
@@ -1023,13 +1017,11 @@ template <typename id_t>
     }
   }
 
-  msc2->m_cp_count = msc2->m_cps.size();
-
   // finally for each non bc cp in msc2 adjust connections such that the
   // the bc cp's are cleared out and any connections with the updated list
   // of cps is reflected
 
-  for(uint i = 0 ; i < msc2->m_cp_count;++i)
+  for(uint i = 0 ; i < msc2->m_cps.size();++i)
   {
     critical_point_t * msc2_cp = msc2->m_cps[i];
 

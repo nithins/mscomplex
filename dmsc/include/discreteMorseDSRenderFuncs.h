@@ -40,7 +40,7 @@ template <typename id_t>
 
     std::vector<uint> *cp_dim_vec  = new std::vector<uint>[ds->getMaxCellDim() +1];
 
-    for ( uint i = 0 ; i< msc->m_cp_count;i++ )
+    for ( uint i = 0 ; i< msc->m_cps.size();i++ )
     {
       uint dim = ds->getCellDim ( msc->m_cps[i]->cellid );
       cp_dim_vec[dim].push_back ( i );
@@ -49,8 +49,8 @@ template <typename id_t>
 
     std::vector<std::pair<uint,uint> > reached_cps
         (
-            msc->m_cp_count,
-            std::make_pair ( msc->m_cp_count,msc->m_cp_count )
+            msc->m_cps.size(),
+            std::make_pair ( msc->m_cps.size(),msc->m_cps.size() )
             );
 
     std::vector<uint4> q;
@@ -61,11 +61,11 @@ template <typename id_t>
       // for each d+2 cell
       for ( cp_vec_t::iterator cp2_it = cp_dim_vec[d+2].begin();cp2_it != cp_dim_vec[d+2].end(); ++cp2_it )
       {
-        if(*cp2_it >= msc->m_cp_count)
+        if(*cp2_it >= msc->m_cps.size())
         {
           _ERROR("invalid cp index ");
           _LOG_VAR(*cp2_it);
-          _LOG_VAR(msc->m_cp_count);
+          _LOG_VAR(msc->m_cps.size());
         }
 
         cp_t *cp2    = msc->m_cps[*cp2_it];
@@ -74,21 +74,21 @@ template <typename id_t>
         {
           cp_t *cp1 = msc->m_cps[ *cp1_it ];
 
-          if(*cp1_it >= msc->m_cp_count)
+          if(*cp1_it >= msc->m_cps.size())
           {
             _ERROR("invalid cp index ");
             _LOG_VAR(*cp1_it);
-            _LOG_VAR(msc->m_cp_count);
+            _LOG_VAR(msc->m_cps.size());
           }
 
           for ( typename cp_adj_t::iterator cp0_it = cp1->des.begin();cp0_it != cp1->des.end(); ++cp0_it )
           {
 
-            if(*cp0_it >= msc->m_cp_count)
+            if(*cp0_it >= msc->m_cps.size())
             {
               _ERROR("invalid cp index ");
               _LOG_VAR(*cp0_it);
-              _LOG_VAR(msc->m_cp_count);
+              _LOG_VAR(msc->m_cps.size());
             }
 
             if ( reached_cps[ *cp0_it].first == *cp2_it )
@@ -267,7 +267,7 @@ template <typename id_t,typename fn_t>
   ArrayRenderer<id_t,fn_t> * ren = new ArrayRenderer<id_t,fn_t>();
 
 
-  for ( uint i = 0 ; i < msc->m_cp_count;i++ )
+  for ( uint i = 0 ; i < msc->m_cps.size();i++ )
   {
     cp_t * src_cp = msc->m_cps[i];
 
@@ -312,7 +312,7 @@ template <typename id_t,typename fn_t,typename get_cell_coords_ftor_t,typename g
 
   fn_t x,y,z;
 
-  for ( uint i = 0;i< msc->m_cp_count;i++ )
+  for ( uint i = 0;i< msc->m_cps.size();i++ )
   {
     id_t cellid = msc->m_cps[i]->cellid;
 
@@ -405,7 +405,7 @@ template <typename id_t,typename fn_t,typename get_cell_coords_ftor_t>
   ren = new ArrayRenderer<id_t,fn_t>();
 
 
-  //  for ( uint i = 0 ; i < msc->m_cp_count;i++ )
+  //  for ( uint i = 0 ; i < msc->m_cps.size();i++ )
   //  {
   //    cp_t * src_cp = msc->m_cps[i];
   //

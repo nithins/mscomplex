@@ -234,7 +234,7 @@ void QuadDataManager::create_ui()
 
   DataPiece *dp_root = *m_dpTree.begin();
 
-  m_ui->critical_point_number_spinBox->setMaximum(dp_root->mscomplex->m_cp_count-1);
+  m_ui->critical_point_number_spinBox->setMaximum(dp_root->mscomplex->m_cps.size()-1);
 
 }
 

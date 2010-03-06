@@ -383,14 +383,13 @@ void QuadDataset::destroy()
 
   m_q.destroy();
 
-  for ( uint i = 0 ; i < m_mscomplex.m_cp_count;i++ )
+  for ( uint i = 0 ; i < m_mscomplex.m_cps.size();i++ )
   {
     m_mscomplex.m_cps[i]->asc_disc.clear();
     m_mscomplex.m_cps[i]->des_disc.clear();
     delete m_mscomplex.m_cps[i];
   }
 
-  m_mscomplex.m_cp_count = 0;
   m_mscomplex.m_id_cp_map.clear();
   m_mscomplex.m_cps.clear();
 

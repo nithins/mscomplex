@@ -866,7 +866,7 @@ void  DataPiece::create_cp_rens(double *data,uint size_x,uint size_y)
   std::vector<glutils::line_idx_t>    crit_conn_idxs[2];
   std::map<uint,uint>                 crit_ms_idx_ren_idx_map;
 
-  for(uint i = 0; i < this->mscomplex->m_cp_count; ++i)
+  for(uint i = 0; i < this->mscomplex->m_cps.size(); ++i)
   {
     if(this->mscomplex->m_cps[i]->isCancelled)
       continue;
@@ -906,7 +906,7 @@ void  DataPiece::create_cp_rens(double *data,uint size_x,uint size_y)
                 glutils::make_buf_obj());
   }
 
-  for(uint i = 0; i < this->mscomplex->m_cp_count; ++i)
+  for(uint i = 0; i < this->mscomplex->m_cps.size(); ++i)
   {
     if(this->mscomplex->m_cps[i]->isCancelled)
       continue;
