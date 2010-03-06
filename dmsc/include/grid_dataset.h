@@ -34,7 +34,7 @@
 
 
 class GridDataset:
-    public IDiscreteDataset<rectangle_complex<int>::point_def>
+    public IDiscreteDataset<rectangle_complex<short int>::point_def>
 {
 
 
@@ -47,12 +47,12 @@ public:
     CELLFLAG_CRITCAL = 2,
   };
 
-
-  typedef int                              cell_coord_t;
+  typedef int16_t                          cell_coord_t;
   typedef double                           cell_fn_t;
   typedef rectangle_complex<cell_coord_t>  rect_cmplx_t;
   typedef rect_cmplx_t::rectangle_def      rect_t;
   typedef rect_cmplx_t::point_def          cellid_t;
+  typedef rect_cmplx_t::point_def          rect_point_t;
   typedef rect_cmplx_t::size_def           rect_size_t;
 
   typedef std::vector<cellid_t>            cellid_list_t;
@@ -66,7 +66,7 @@ public:
 
   typedef boost::multi_array<cell_fn_t,2>  varray_t;
   typedef boost::multi_array<cellid_t,2>   cellpair_array_t;
-  typedef boost::multi_array<eCellFlags,2> cellflag_array_t;
+  typedef boost::multi_array<int8_t,2>     cellflag_array_t;
 
 private:
 
@@ -100,8 +100,6 @@ public:
 
   void  assignGradients();
 
-  uint  getNumCriticalPoints();
-
   void  computeDiscs();
 
   // dataset interface
@@ -129,7 +127,7 @@ public:
 
   virtual void   markCellCritical ( cellid_t c );
 
-  inline virtual uint   getCellDim ( cellid_t c ) const;
+  inline virtual uint getCellDim ( cellid_t c ) const;
 
   virtual uint   getMaxCellDim() const;
 
@@ -175,7 +173,7 @@ public:
 
 inline uint GridDataset::getCellDim ( cellid_t c ) const
 {
-  return s_getCellDim(c);
+  return ((c[0]&0x01)+(c[1]&0x01));
 }
 
 

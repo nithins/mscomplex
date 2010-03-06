@@ -56,10 +56,56 @@ void GridDataManager::createDataPieces ()
   rect_t r(cellid_t(0,0),cellid_t(2*(m_size_x-1),2*(m_size_y-1)));
   rect_t e(cellid_t(0,0),cellid_t(2*(m_size_x-1),2*(m_size_y-1)));
 
-  GridDataPiece *dp = new GridDataPiece(r,e);
+  createPieces_quadtree(r,e,3);
+  return;
+}
 
-  m_pieces.push_back(dp);
 
+void GridDataManager::createPieces_quadtree(rect_t r,rect_t e,u_int level )
+{
+  if(level == 0)
+  {
+    stringstream ss;    
+    ss<<r;
+    
+    GridDataPiece *dp = new GridDataPiece(r,e);
+    dp->label = ss.str();
+    m_pieces.push_back(dp);
+    
+    return;
+  }
+
+  u_int dim = 1;
+  
+  rect_size_t  s = r.size();
+  
+  rect_point_t tr1 = r.top_right();
+  rect_point_t bl1 = r.bottom_left();
+  
+  tr1[dim] -= 2*(s[dim]/4);
+  bl1[dim]  = tr1[dim];
+  
+  rect_t r1 = rect_t(r.bottom_left(),tr1);
+  rect_t r2 = rect_t(bl1,r.top_right());  
+  
+  rect_point_t tr2 = e.top_right();
+  rect_point_t bl2 = e.bottom_left();
+  
+  tr2[dim] = tr1[dim] + 2;
+  bl2[dim] = bl1[dim] - 2;
+  
+  rect_t e1 = rect_t(e.bottom_left(),tr2);
+  rect_t e2 = rect_t(bl2,e.top_right());  
+  
+  createPieces_quadtree(r1,e1,level-1);
+  createPieces_quadtree(r2,e2,level-1);
+}
+
+void GridDataManager::readFile ( )
+{
+  
+  u_int dp_idx = 0;
+  
   fstream infile ( m_filename.c_str(),fstream::in|fstream::binary );
 
   for ( uint y = 0 ; y <m_size_y;y++ )
@@ -68,26 +114,21 @@ void GridDataManager::createDataPieces ()
       double data;
 
       if ( infile.eof() )
-      {
         throw std::length_error(string(" Premature end of file "));
-      }
+
       infile.read ( reinterpret_cast<char *> ( &data),sizeof ( double ) );
-
-      dp->g.set_cell_fn(cellid_t(2*x,2*y),data);
+      
+      cellid_t p(2*x,2*y);
+      
+      if(!m_pieces[dp_idx]->g.get_ext_rect().contains(p))
+        ++dp_idx;
+      
+      m_pieces[dp_idx]->g.set_cell_fn(p,data);
+      
+      if(dp_idx+1 < m_pieces.size() && 
+        m_pieces[dp_idx+1]->g.get_ext_rect().contains(p))
+        m_pieces[dp_idx+1]->g.set_cell_fn(p,data);
     }
-
-  dp->label = "Root";
-  return;
-}
-
-void GridDataManager::setDataPieceLabels()
-{
-  return;
-}
-
-void GridDataManager::readFile ( )
-{
-
 }
 
 void GridDataManager::initDataPieceForWork ( GridDataPiece *dp )
@@ -169,9 +210,7 @@ GridDataManager::GridDataManager
   m_controller = IModelController::Create();
 
   createDataPieces();
-
-  setDataPieceLabels();
-
+  
   readFile ();
 
   _LOG ( "==========================" );
@@ -505,7 +544,7 @@ void  GridDataPiece::create_cp_rens()
 
 void GridDataPiece::create_grad_rens()
 {
-  rect_t r = g.get_rect();
+  rect_t r = g.get_ext_rect();
 
   std::vector<glutils::vertex_t>      cell_locations;
   std::vector<glutils::line_idx_t>    pair_idxs;
@@ -514,7 +553,6 @@ void GridDataPiece::create_grad_rens()
   for(cell_coord_t y = r.bottom(); y<=r.top(); ++y)
     for(cell_coord_t x = r.left(); x<=r.right(); ++x)
     {
-
       cellid_t c = cellid_t(x,y);
       if(g.isCellPaired(c))
       {

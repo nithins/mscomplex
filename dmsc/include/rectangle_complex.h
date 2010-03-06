@@ -97,6 +97,11 @@ class rectangle_complex
       {
         return sub ( *this,p );
       }
+      
+      point_def operator/(coord_type s) const
+      {
+	return point_def((*this)[0]/s,(*this)[1]/s);
+      }
 
     };
 

@@ -83,11 +83,14 @@ class GridDataManager:
 {
 
 typedef GridDataset::rect_t rect_t;
+typedef GridDataset::cell_coord_t cell_coord_t;
 typedef GridDataset::cellid_t cellid_t;
+typedef GridDataset::rect_point_t rect_point_t;
+typedef GridDataset::rect_size_t rect_size_t;
 
 public:
 
-  std::vector<GridDataPiece *>                  m_pieces;
+  std::vector<GridDataPiece *>                   m_pieces;
 
   bool                                           m_bShowCriticalPointLabels;
   std::string                                    m_filename;
@@ -107,9 +110,9 @@ public:
 
   virtual ~GridDataManager ();
 
-  void createDataPieces();
+  void createPieces_quadtree(rect_t r,rect_t e,u_int level );
 
-  void setDataPieceLabels();
+  void createDataPieces();
 
   void readFile ();
 
