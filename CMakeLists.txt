@@ -24,7 +24,7 @@ if(NOT Boost_FOUND)
   message(FATAL_ERROR "Cannot find boost")
 endif(NOT Boost_FOUND)
 
-subdirs(glapp_framework)
+add_subdirectory(glapp_framework)
 
 set(dmsc_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/main.cpp 
 

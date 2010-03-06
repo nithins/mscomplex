@@ -67,7 +67,6 @@ template <typename id_type>
   std::sort ( cell2pts,cell2pts+cell2pts_ct,boost::bind ( &IDiscreteDataset<id_type>::ptLt,dataset,_2,_1 ) );
 
   return std::lexicographical_compare ( cell1pts,cell1pts+cell1pts_ct,cell2pts,cell2pts+cell2pts_ct,boost::bind ( &IDiscreteDataset<id_type>::ptLt,dataset,_1,_2 ) );
-
 };
 
 template <typename id_type>
@@ -84,48 +83,44 @@ template <typename id_type>
 
   uint cofacet_count = dataset->getCellCofacets ( cellId,cofacets );
 
-  bool   pairid_usable = false;
-  pairid = cellId;
-
   // for each co facet
   for ( uint i = 0 ; i < cofacet_count ; i++ )
   {
     id_type facets[20];
     uint facet_count = dataset->getCellFacets ( cofacets[i],facets );
 
-    bool isUsable = true;
+    cofacet_usable[i] = true;
 
     if ( dataset->isTrueBoundryCell ( cellId ) && !dataset->isTrueBoundryCell ( cofacets[i] ) )
     {
-      isUsable = false;
+      cofacet_usable[i] = false;
+      continue;
     }
 
-    if ( isUsable )
+    for ( uint j = 0 ; j < facet_count ; j++ )
     {
-      for ( uint j = 0 ; j < facet_count ; j++ )
+      if ( compareCells ( dataset,cellId,facets[j] ) &&
+           compareCells ( dataset,facets[j],cofacets[i] ) )
       {
-        if ( compareCells ( dataset,cellId,facets[j] ) &&
-             compareCells ( dataset,facets[j],cofacets[i] ) )
-        {
-          isUsable = false;
-          break;
-        }
+        cofacet_usable[i] = false;
+        break;
       }
     }
-
-    cofacet_usable[i] = isUsable;
-
-    if ( isUsable )
-    {
-      pairid        = cofacets[i];
-      pairid_usable = true;
-    }
   }
+
+  bool pairid_usable = false;
 
   for ( uint i =0 ; i < cofacet_count;i++ )
   {
     if ( cofacet_usable[i] == false )
       continue;
+
+    if(pairid_usable == false)
+    {
+      pairid_usable = true;
+      pairid = cofacets[i];
+      continue;
+    }
 
     if ( compareCells ( dataset,cofacets[i],pairid ) )
       pairid = cofacets[i];

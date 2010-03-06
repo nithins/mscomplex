@@ -78,8 +78,12 @@ template <typename id_t>
 {
 
 public:
+  
+  struct critical_point;
 
-  typedef std::map<id_t,uint> id_cp_map_t;
+  typedef std::map<id_t,uint>           id_cp_map_t;  
+  typedef std::vector<critical_point *> cp_ptr_list_t;
+
 
   struct critical_point
   {
@@ -103,70 +107,51 @@ public:
 
     connection_t asc;
     connection_t des;
-
-    void print_asc_connections(std::ostream & os,const MSComplex<id_t> &msc)
-    {
-      os<<"{ ";
-      for(connection_t::iterator it = asc.begin(); it != asc.end(); ++it)
-      {
-        if(msc.m_cps[*it]->isBoundryCancelable)
-          os<<"*";
-        os<<msc.m_cps[*it]->cellid;
-        os<<", ";
-      }
-      os<<"}";
-    }
-
-    void print_des_connections(std::ostream & os,const MSComplex<id_t> &msc)
-    {
-      os<<"{ ";
-      for(connection_t::iterator it = des.begin(); it != des.end(); ++it)
-      {
-        if(msc.m_cps[*it]->isBoundryCancelable)
-          os<<"*";
-        os<<msc.m_cps[*it]->cellid;
-        os<<", ";
-      }
-      os<<"}";
-    }
   };
-
-  std::map<id_t,uint> m_id_cp_map;
-
-  uint m_cp_count;
+  
+  cp_ptr_list_t m_cps;
+  id_cp_map_t   m_id_cp_map;
+  u_int         m_cp_count;
 
   MSComplex()
   {
     m_cp_count = 0;
   }
-
-  typedef std::vector<critical_point *> cp_ptr_list_t;
-
-  cp_ptr_list_t m_cps;
-
-
+  
+  void print_connections
+  (std::ostream & os,const typename critical_point::connection_t &conn) const
+  {
+    typedef typename critical_point::connection_t::iterator conn_iter_t;
+    
+    os<<"{ ";
+    for(conn_iter_t it = conn.begin(); it != conn.end(); ++it)
+    {
+      if(m_cps[*it]->isBoundryCancelable)
+        os<<"*";
+      os<<m_cps[*it]->cellid;
+      os<<", ";
+    }
+    os<<"}";
+  }
+  
   void print_connections(std::ostream & os) const
   {
     for(uint i = 0 ; i < m_cp_count;++i)
     {
-//      if(m_cps[i]->isCancelled)
-//        continue;
-
       os<<"des(";
       if(m_cps[i]->isBoundryCancelable)
         os<<"*";
       os<<m_cps[i]->cellid<<") = ";
-      m_cps[i]->print_des_connections(os,*this);
+      print_connections(os,m_cps[i]->des);
       os<<std::endl;
 
       os<<"asc(";
       if(m_cps[i]->isBoundryCancelable)
         os<<"*";
       os<<m_cps[i]->cellid<<") = ";
-      m_cps[i]->print_asc_connections(os,*this);
+      print_connections(os,m_cps[i]->asc);
       os<<std::endl;
       os<<std::endl;
-
     }
   }
 };
