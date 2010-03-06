@@ -43,19 +43,11 @@ GridDataset::cellid_t   GridDataset::getCellPairId ( cellid_t c ) const
 
 bool GridDataset::ptLt ( cellid_t c1,cellid_t c2 ) const
 {
-  if(!isPoint(c1) || !isPoint(c2))
-    throw std::logic_error("this is used only to compare points");
+  double f1 = m_vertex_fns[c1[0]>>1][c1[1]>>1];
+  double f2 = m_vertex_fns[c2[0]>>1][c2[1]>>1];
 
-  cellid_t c1_,c2_;
-
-  std::transform(c1.begin(),c1.end(),c1_.begin(),
-                boost::bind(shift_right<cell_coord_t,uint>,_1,1));
-
-  std::transform(c2.begin(),c2.end(),c2_.begin(),
-                boost::bind(shift_right<cell_coord_t,uint>,_1,1));
-
-  if(m_vertex_fns(c1_) != m_vertex_fns(c2_))
-    return m_vertex_fns(c1_) < m_vertex_fns(c2_);
+  if( f1 != f2)
+    return f1 < f2;
 
   return c1<c2;
 
@@ -239,7 +231,9 @@ void GridDataset::connectCps ( cellid_t c1, cellid_t c2)
 {
 
   if(getCellDim(c1) <getCellDim(c2) )
+  {
     std::swap(c1,c2);
+  }
 
   if(getCellDim(c1) != getCellDim(c2)+1)
     throw std::logic_error("must connect i,i+1 cp (or vice versa)");
@@ -283,26 +277,25 @@ std::string GridDataset::getCellDescription ( cellid_t c ) const
 
 void  GridDataset::assignGradients()
 {
-
   // determine all the pairings of all cells in m_rect
   for(cell_coord_t y = m_rect.bottom(); y <= m_rect.top();y += 1)
     for(cell_coord_t x = m_rect.left(); x <= m_rect.right();x += 1)
     {
-      cellid_t c(x,y),p;
+    cellid_t c(x,y),p;
 
-      if (isCellMarked(c))
-        continue;
+    if (isCellMarked(c))
+      continue;
 
-      if(minPairable_cf(this,c,p))
-        pairCells(c,p);
-    }
+    if(minPairable_cf(this,c,p))
+      pairCells(c,p);
+  }
 
   for(cell_coord_t y = m_rect.bottom(); y <= m_rect.top();y += 1)
     for(cell_coord_t x = m_rect.left(); x <= m_rect.right();x += 1)
     {
-      cellid_t c(x,y);
+    cellid_t c(x,y);
 
-      if (!isCellMarked(c)) markCellCritical(c);
+    if (!isCellMarked(c)) markCellCritical(c);
     }
 
   // mark artificial boundry as critical
@@ -357,12 +350,26 @@ void  GridDataset::computeDiscs()
       (&m_msgraph,this,m_critical_cells.begin(),m_critical_cells.end());
 
   for ( cellid_list_t::iterator it = m_critical_cells.begin() ;
-        it != m_critical_cells.end();++it)
+  it != m_critical_cells.end();++it)
   {
-    track_gradient_tree_bfs
-        (this,*it,GRADIENT_DIR_DOWNWARD,
-         add_to_grad_tree_proxy,
-         boost::bind(&GridDataset::connectCps,this,*it,_1));
+
+    switch(getCellDim(*it))
+    {
+    case 0:
+      track_gradient_tree_bfs
+          (this,*it,GRADIENT_DIR_UPWARD,
+           add_to_grad_tree_proxy,
+           boost::bind(&GridDataset::connectCps,this,*it,_1));
+      break;
+    case 2:
+      track_gradient_tree_bfs
+          (this,*it,GRADIENT_DIR_DOWNWARD,
+           add_to_grad_tree_proxy,
+           boost::bind(&GridDataset::connectCps,this,_1,*it));
+      break;
+    default:
+      break;
+    }
   }
 
   // mark all the boundry cps as boundry cancellable
@@ -403,5 +410,3 @@ void GridDataset::getCellCoord(cellid_t c,double &x,double &y,double &z)
 
   y /= pts_ct;
 }
-
-

@@ -181,6 +181,8 @@ GridDataManager::GridDataManager
   if ( m_single_threaded_mode == false )
   {
     workAllPieces_mt();
+
+    exit(0);
   }
   else
   {
@@ -464,6 +466,25 @@ void  GridDataPiece::create_cp_rens()
     {
       if(g.get_ms_complex().m_cps[*it]->isCancelled)
         throw std::logic_error("this cancelled cp should not be present here");
+
+      uint conn_cp_ren_idx = crit_ms_idx_ren_idx_map[*it];
+
+      crit_conn_idxs[dim].push_back
+          (glutils::line_idx_t(cp_ren_idx,conn_cp_ren_idx));
+
+    }
+
+    if(!g.get_ms_complex().m_cps[i]->isBoundryCancelable)
+      continue;
+
+    for(conn_t::iterator it = g.get_ms_complex().m_cps[i]->des.begin();
+        it != g.get_ms_complex().m_cps[i]->des.end(); ++it)
+    {
+      if(g.get_ms_complex().m_cps[*it]->isCancelled)
+        throw std::logic_error("this cancelled cp should not be present here");
+
+      if(g.get_ms_complex().m_cps[*it]->isBoundryCancelable)
+        continue;
 
       uint conn_cp_ren_idx = crit_ms_idx_ren_idx_map[*it];
 

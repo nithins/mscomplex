@@ -930,6 +930,25 @@ void  DataPiece::create_cp_rens(double *data,uint size_x,uint size_y)
           (glutils::line_idx_t(cp_ren_idx,conn_cp_ren_idx));
 
     }
+
+    if(!mscomplex->m_cps[i]->isBoundryCancelable)
+      continue;
+
+    for(connection_t::iterator it = mscomplex->m_cps[i]->des.begin();
+        it != mscomplex->m_cps[i]->des.end(); ++it)
+    {
+      if(mscomplex->m_cps[*it]->isCancelled)
+        throw std::logic_error("this cancelled cp should not be present here");
+
+      if(mscomplex->m_cps[*it]->isBoundryCancelable)
+        continue;
+
+      uint conn_cp_ren_idx = crit_ms_idx_ren_idx_map[*it];
+
+      crit_conn_idxs[dim-1].push_back
+          (glutils::line_idx_t(cp_ren_idx,conn_cp_ren_idx));
+
+    }
   }
 
   for(uint i = 0 ; i < 2; ++i)
