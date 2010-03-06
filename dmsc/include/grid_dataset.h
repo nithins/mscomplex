@@ -84,16 +84,13 @@ public:
 
   // initialization of the dataset
 
-  GridDataset(const rect_t &r,
-              const rect_t &e);
-
-  void set_datarow(const double *, uint rownum);
+  GridDataset(const rect_t &r,const rect_t &e);
+  
+  void init();
 
   cell_fn_t get_cell_fn(cellid_t c) const;
 
   void set_cell_fn(cellid_t c,cell_fn_t f);
-
-  static bool isPoint(cellid_t c);
 
   // actual algorithm work
 public:

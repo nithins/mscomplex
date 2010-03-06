@@ -12,8 +12,11 @@ GridDataset::GridDataset(const rect_t &r,const rect_t &e):
 
   // TODO: assert that the given rect is of even size..
   //       since each vertex is in the even positions
-  //
+  //  
+}
 
+void GridDataset::init()
+{
   rect_size_t   s = m_ext_rect.size();  
 
   m_vertex_fns.resize(boost::extents[1+s[0]/2][1+s[1]/2]);
@@ -31,12 +34,6 @@ GridDataset::GridDataset(const rect_t &r,const rect_t &e):
   m_vertex_fns.reindex(bl/2);  
   m_cell_flags.reindex(bl);
   m_cell_pairs.reindex(bl);
-  
-}
-
-void GridDataset::set_datarow(const double *data, uint rownum)
-{
-  std::copy(data,data+m_ext_rect.size()[0]+1,m_vertex_fns[rownum].begin());
 }
 
 GridDataset::cellid_t   GridDataset::getCellPairId ( cellid_t c ) const
@@ -62,7 +59,7 @@ bool GridDataset::ptLt ( cellid_t c1,cellid_t c2 ) const
 
 GridDataset::cell_fn_t GridDataset::get_cell_fn(cellid_t c) const
 {
-  if(!isPoint(c))
+  if(getCellDim(c) != 0)
     throw std::logic_error("incorrect cell type requsting vert fn value");
   
   c[0] /=2;
@@ -75,21 +72,13 @@ GridDataset::cell_fn_t GridDataset::get_cell_fn(cellid_t c) const
 
 void GridDataset::set_cell_fn(cellid_t c,cell_fn_t f)
 {
-  if(!isPoint(c))
+  if(getCellDim(c) != 0)
     throw std::logic_error("incorrect cell type requsting vert fn value");
 
   c[0] /=2;
   c[1] /=2;
 
   m_vertex_fns(c) = f;
-}
-
-bool GridDataset::isPoint(cellid_t c)
-{
-  if(c[0]&0x01 == 1 ||c[1]&0x01 == 1 )
-    return false;
-
-  return true;
 }
 
 uint GridDataset::getCellPoints ( cellid_t c,cellid_t  *p ) const

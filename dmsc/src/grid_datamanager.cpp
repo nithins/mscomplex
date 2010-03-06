@@ -69,6 +69,7 @@ void GridDataManager::createPieces_quadtree(rect_t r,rect_t e,u_int level )
     ss<<r;
     
     GridDataPiece *dp = new GridDataPiece(r,e);
+    dp->g.init();
     dp->label = ss.str();
     m_pieces.push_back(dp);
     
