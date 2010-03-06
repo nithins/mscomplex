@@ -1059,6 +1059,50 @@ template <typename id_t>
   }
 }
 
+template <typename id_t>
+void print_connections
+(std::ostream & os,
+ const MSComplex<id_t> &msc,
+ const typename MSComplex<id_t>::critical_point::connection_t &conn 
+ ) 
+{
+  typedef typename MSComplex<id_t>::critical_point::connection_t connection_t;
+  typedef typename connection_t::iterator conn_iter_t;
+  
+  os<<"{ ";
+  for(conn_iter_t it = conn.begin(); it != conn.end(); ++it)
+  {
+    if(msc.m_cps[*it]->isBoundryCancelable)
+      os<<"*";
+    os<<msc.m_cps[*it]->cellid;
+    os<<", ";
+  }
+  os<<"}";
+}
+
+template <typename id_t>
+void print_connections
+(std::ostream & os,const MSComplex<id_t> &msc) 
+{
+  for(uint i = 0 ; i < msc.m_cps.size();++i)
+  {
+    os<<"des(";
+    if(msc.m_cps[i]->isBoundryCancelable)
+      os<<"*";
+    os<<msc.m_cps[i]->cellid<<") = ";
+    print_connections(os,msc,msc.m_cps[i]->des);
+    os<<std::endl;
+
+    os<<"asc(";
+    if(msc.m_cps[i]->isBoundryCancelable)
+      os<<"*";
+    os<<msc.m_cps[i]->cellid<<") = ";
+    print_connections(os,msc,msc.m_cps[i]->asc);
+    os<<std::endl;
+    os<<std::endl;
+  }
+}
+
 
 
 template<typename id_t>

@@ -115,43 +115,6 @@ public:
   MSComplex()
   {
   }
-  
-  void print_connections
-  (std::ostream & os,const typename critical_point::connection_t &conn) const
-  {
-    typedef typename critical_point::connection_t::iterator conn_iter_t;
-    
-    os<<"{ ";
-    for(conn_iter_t it = conn.begin(); it != conn.end(); ++it)
-    {
-      if(m_cps[*it]->isBoundryCancelable)
-        os<<"*";
-      os<<m_cps[*it]->cellid;
-      os<<", ";
-    }
-    os<<"}";
-  }
-  
-  void print_connections(std::ostream & os) const
-  {
-    for(uint i = 0 ; i < m_cps.size();++i)
-    {
-      os<<"des(";
-      if(m_cps[i]->isBoundryCancelable)
-        os<<"*";
-      os<<m_cps[i]->cellid<<") = ";
-      print_connections(os,m_cps[i]->des);
-      os<<std::endl;
-
-      os<<"asc(";
-      if(m_cps[i]->isBoundryCancelable)
-        os<<"*";
-      os<<m_cps[i]->cellid<<") = ";
-      print_connections(os,m_cps[i]->asc);
-      os<<std::endl;
-      os<<std::endl;
-    }
-  }
 };
 
 template <typename id_type,typename fn_type>

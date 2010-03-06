@@ -253,7 +253,7 @@ void GridDataManager ::logAllConnections(const std::string &prefix)
     GridDataPiece *dp = m_pieces[i];
 
     fstream outfile((prefix+dp->label+string(".txt")).c_str(),ios::out);
-    dp->g.get_ms_complex().print_connections(*((std::ostream *) &outfile));
+    print_connections(*((std::ostream *) &outfile),dp->g.get_ms_complex());
   }
 
 }

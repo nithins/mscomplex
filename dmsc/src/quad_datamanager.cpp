@@ -627,7 +627,7 @@ void QuadDataManager::logAllConnections(const std::string &prefix)
     DataPiece *dp = m_pieces[i];
 
     fstream outfile((prefix+dp->label+string(".txt")).c_str(),ios::out);
-    dp->mscomplex->print_connections(*((std::ostream *) &outfile));
+    print_connections(*((std::ostream *) &outfile),*dp->mscomplex);
   }
 
 }
