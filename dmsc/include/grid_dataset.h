@@ -32,6 +32,41 @@
 #include <boost/multi_array.hpp>
 
 
+class GridMSComplex:
+    public MSComplex<rectangle_complex<short int>::point_def>
+{
+  typedef int16_t                          cell_coord_t;
+  typedef double                           cell_fn_t;
+  typedef rectangle_complex<cell_coord_t>  rect_cmplx_t;
+  typedef rect_cmplx_t::rectangle_def      rect_t;
+  typedef rect_cmplx_t::point_def          cellid_t;
+  typedef rect_cmplx_t::point_def          rect_point_t;
+  typedef rect_cmplx_t::size_def           rect_size_t;
+
+  typedef std::vector<cellid_t>            cellid_list_t;
+  typedef std::pair<cellid_t,cellid_t>     cellid_pair_t;
+  typedef std::vector<cellid_pair_t>       cellid_pair_list_t;
+
+  typedef GridMSComplex                    mscomplex_t;
+  typedef mscomplex_t::critical_point      critpt_t;
+  typedef critpt_t::connection_t           conn_t;
+  typedef critpt_t::connection_t::iterator conn_iter_t;
+
+  typedef boost::multi_array<cell_fn_t,2>  varray_t;
+  typedef boost::multi_array<cellid_t,2>   cellpair_array_t;
+  typedef boost::multi_array<int8_t,2>     cellflag_array_t;
+
+  rect_t  m_rect;
+  rect_t  m_ext_rect;
+
+public:
+  void merge_up(GridMSComplex::mscomplex_t& msc);
+
+  GridMSComplex(rect_t r,rect_t e):m_rect(r),m_ext_rect(e)
+  {
+  }
+
+};
 
 class GridDataset:
     public IDiscreteDataset<rectangle_complex<short int>::point_def>
@@ -59,10 +94,9 @@ public:
   typedef std::pair<cellid_t,cellid_t>     cellid_pair_t;
   typedef std::vector<cellid_pair_t>       cellid_pair_list_t;
 
-  typedef MSComplex<cellid_t>              mscomplex_t;
+  typedef GridMSComplex                    mscomplex_t;
   typedef mscomplex_t::critical_point      critpt_t;
   typedef critpt_t::connection_t           critpt_conn_t;
-
 
   typedef boost::multi_array<cell_fn_t,2>  varray_t;
   typedef boost::multi_array<cellid_t,2>   cellpair_array_t;
@@ -70,27 +104,28 @@ public:
 
 private:
 
-  rect_t  m_rect;
-  rect_t  m_ext_rect;
+  rect_t           m_rect;
+  rect_t           m_ext_rect;
+  mscomplex_t      m_msgraph;
 
   varray_t         m_vertex_fns; // defined on the vertices of bounding rect
   cellpair_array_t m_cell_pairs;
   cellflag_array_t m_cell_flags;
   cellid_list_t    m_critical_cells;
 
-  mscomplex_t      m_msgraph;
+
 
 public:
 
   // initialization of the dataset
 
-  GridDataset(const rect_t &r,const rect_t &e);
-  
+  GridDataset ( const rect_t &r,const rect_t &e );
+
   void init();
 
-  cell_fn_t get_cell_fn(cellid_t c) const;
+  void set_cell_fn ( cellid_t c,cell_fn_t f );
 
-  void set_cell_fn(cellid_t c,cell_fn_t f);
+  void clear_graddata();
 
   // actual algorithm work
 public:
@@ -104,7 +139,7 @@ public:
 
   virtual cellid_t   getCellPairId ( cellid_t ) const;
 
-  virtual bool   ptLt ( cellid_t ,cellid_t  ) const;
+  virtual bool   ptLt ( cellid_t ,cellid_t ) const;
 
   virtual uint   getCellPoints ( cellid_t ,cellid_t  * ) const;
 
@@ -112,15 +147,15 @@ public:
 
   virtual uint   getCellCofacets ( cellid_t ,cellid_t * ) const;
 
-  virtual bool   isPairOrientationCorrect ( cellid_t c, cellid_t p) const;
+  virtual bool   isPairOrientationCorrect ( cellid_t c, cellid_t p ) const;
 
   virtual bool   isCellMarked ( cellid_t c ) const;
 
-  virtual bool   isCellCritical ( cellid_t c) const;
+  virtual bool   isCellCritical ( cellid_t c ) const;
 
-  virtual bool   isCellPaired( cellid_t c) const;
+  virtual bool   isCellPaired ( cellid_t c ) const;
 
-  virtual void   pairCells ( cellid_t c,cellid_t p);
+  virtual void   pairCells ( cellid_t c,cellid_t p );
 
   virtual void   markCellCritical ( cellid_t c );
 
@@ -134,7 +169,7 @@ public:
 
   virtual bool   isCellExterior ( cellid_t c ) const;
 
-  virtual void   connectCps ( cellid_t c1, cellid_t c2) ;
+  virtual void   connectCps ( cellid_t c1, cellid_t c2 ) ;
 
   virtual std::string  getCellFunctionDescription ( cellid_t pt ) const;
 
@@ -142,14 +177,14 @@ public:
 
   // misc functions
 public:
-  inline const mscomplex_t & get_ms_complex()
+  inline mscomplex_t & get_ms_complex()
   {
     return m_msgraph;
   }
 
   inline static uint s_getCellDim ( cellid_t c )
   {
-    return ((c[0]&0x01)+(c[1]&0x01));
+    return ( ( c[0]&0x01 ) + ( c[1]&0x01 ) );
   }
 
   inline rect_t get_rect()
@@ -162,15 +197,17 @@ public:
     return m_ext_rect;
   }
 
+  cell_fn_t get_cell_fn ( cellid_t c ) const;
+
   // dataset renderable interface
 public:
-  void getCellCoord(cellid_t c,double &x,double &y,double &z);
+  void getCellCoord ( cellid_t c,double &x,double &y,double &z );
 
 };
 
 inline uint GridDataset::getCellDim ( cellid_t c ) const
 {
-  return ((c[0]&0x01)+(c[1]&0x01));
+  return ( ( c[0]&0x01 ) + ( c[1]&0x01 ) );
 }
 
 

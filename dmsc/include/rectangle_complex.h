@@ -97,8 +97,8 @@ class rectangle_complex
       {
         return sub ( *this,p );
       }
-      
-      point_def operator/(coord_type s) const
+
+      inline point_def operator/(coord_type s) const
       {
 	return point_def((*this)[0]/s,(*this)[1]/s);
       }
@@ -200,6 +200,20 @@ class rectangle_complex
             ( ( tr.y() ) < ( rec.bl.y() ) ) ||
             ( ( rec.tr.y() ) < ( bl.y() ) )
           );
+      }
+
+      bool intersection(const rectangle_def & rect,rectangle_def &i) const
+      {
+        if(!intersects(rect))
+          return false;
+
+        coord_type l = std::max(rect.left(),left());
+        coord_type r = std::min(rect.right(),right());
+        coord_type b = std::max(rect.bottom(),bottom());
+        coord_type t = std::min(rect.top(),top());
+
+        i = rectangle_def(l,b,r,t);
+        return true;
       }
 
       void mul ( const coord_type & b )

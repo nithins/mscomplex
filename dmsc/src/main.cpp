@@ -155,7 +155,7 @@ int main ( int argc, char *argv[] )
   const boost::regex gf_re ( "(-gf )");
 
 
-  try
+//  try
   {
     boost::shared_ptr<IFramework> framework(IFramework::Create ( argc, argv ));
 
@@ -186,11 +186,11 @@ int main ( int argc, char *argv[] )
 
     framework->Exec();
   }
-  catch(std::exception &e)
-  {
-    _LOG(usage_string(argv[0]));
-    _LOG(e.what());
-  }
+//  catch(std::exception &e)
+//  {
+//    _LOG(usage_string(argv[0]));
+//    _LOG(e.what());
+//  }
 
   return 0;
 }

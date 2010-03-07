@@ -65,71 +65,71 @@ void GridDataManager::createPieces_quadtree(rect_t r,rect_t e,u_int level )
 {
   if(level == 0)
   {
-    stringstream ss;    
+    stringstream ss;
     ss<<r;
-    
+
     GridDataPiece *dp = new GridDataPiece(r,e);
     dp->g.init();
     dp->label = ss.str();
     m_pieces.push_back(dp);
-    
+
     return;
   }
 
   u_int dim = 1;
-  
+
   rect_size_t  s = r.size();
-  
+
   rect_point_t tr1 = r.top_right();
   rect_point_t bl1 = r.bottom_left();
-  
+
   tr1[dim] -= 2*(s[dim]/4);
   bl1[dim]  = tr1[dim];
-  
+
   rect_t r1 = rect_t(r.bottom_left(),tr1);
-  rect_t r2 = rect_t(bl1,r.top_right());  
-  
+  rect_t r2 = rect_t(bl1,r.top_right());
+
   rect_point_t tr2 = e.top_right();
   rect_point_t bl2 = e.bottom_left();
-  
+
   tr2[dim] = tr1[dim] + 2;
   bl2[dim] = bl1[dim] - 2;
-  
+
   rect_t e1 = rect_t(e.bottom_left(),tr2);
-  rect_t e2 = rect_t(bl2,e.top_right());  
-  
+  rect_t e2 = rect_t(bl2,e.top_right());
+
   createPieces_quadtree(r1,e1,level-1);
   createPieces_quadtree(r2,e2,level-1);
 }
 
 void GridDataManager::readFile ( )
 {
-  
+
   u_int dp_idx = 0;
-  
+
   fstream infile ( m_filename.c_str(),fstream::in|fstream::binary );
 
   for ( uint y = 0 ; y <m_size_y;y++ )
     for ( uint x = 0 ; x < m_size_x;x++ )
     {
-      double data;
+    double data;
 
-      if ( infile.eof() )
-        throw std::length_error(string(" Premature end of file "));
+    if ( infile.eof() )
+      throw std::length_error(string(" Premature end of file "));
 
-      infile.read ( reinterpret_cast<char *> ( &data),sizeof ( double ) );
-      
-      cellid_t p(2*x,2*y);
-      
-      if(!m_pieces[dp_idx]->g.get_ext_rect().contains(p))
-        ++dp_idx;
-      
-      m_pieces[dp_idx]->g.set_cell_fn(p,data);
-      
-      if(dp_idx+1 < m_pieces.size() && 
-        m_pieces[dp_idx+1]->g.get_ext_rect().contains(p))
-        m_pieces[dp_idx+1]->g.set_cell_fn(p,data);
-    }
+    infile.read ( reinterpret_cast<char *> ( &data),sizeof ( double ) );
+
+    cellid_t p(2*x,2*y);
+
+    if(!m_pieces[dp_idx]->g.get_ext_rect().contains(p))
+      ++dp_idx;
+
+    m_pieces[dp_idx]->g.set_cell_fn(p,data);
+
+    if(dp_idx+1 < m_pieces.size() &&
+       m_pieces[dp_idx+1]->g.get_ext_rect().contains(p))
+      m_pieces[dp_idx+1]->g.set_cell_fn(p,data);
+  }
 }
 
 void GridDataManager::initDataPieceForWork ( GridDataPiece *dp )
@@ -148,6 +148,11 @@ void GridDataManager::workPiece ( GridDataPiece *dp )
 
   dp->g.assignGradients();
   dp->g.computeDiscs ();
+}
+
+void GridDataManager::mergePieces ( GridDataPiece  * dp1,GridDataPiece  *dp2)
+{
+  dp2->g.get_ms_complex().merge_up(dp1->g.get_ms_complex());
 }
 
 void GridDataManager::workAllPieces_mt( )
@@ -196,6 +201,60 @@ void GridDataManager::workAllPieces_st( )
   _LOG ( "End calculating asc/des manifolds for all pieces " );
 }
 
+void GridDataManager::mergePieces_mt( )
+{
+
+  _LOG("Begin Merge");
+
+  for ( uint i = 1 ; i < m_pieces.size(); i*= 2)
+  {
+    boost::thread ** threads = new boost::thread*[ m_pieces.size()/(i*2) ];
+
+    uint threadno = 0;
+
+    for ( uint j = 0 ; j < m_pieces.size(); j+= i*2)
+    {
+      _LOG("Kicking off merging "<<j<<" "<<j+i);
+
+      GridDataPiece * dp1 = m_pieces[j];
+      GridDataPiece * dp2 = m_pieces[j+i];
+
+      threads[threadno] = new boost::thread
+                          ( boost::bind ( &GridDataManager::mergePieces,this,dp1,dp2 ));
+      threadno++;
+
+    }
+
+    threadno = 0;
+
+    for ( uint j = 0 ; j < m_pieces.size(); j+= i*2)
+    {
+      threads[threadno]->join();
+      _LOG ( "thread "<<threadno<<" joint" );
+      threadno++;
+    }
+    delete []threads;
+  }
+
+  _LOG("End Merge");
+}
+
+void GridDataManager::mergePieces_st( )
+{
+  for ( uint i = 1 ; i < m_pieces.size(); i*= 2)
+  {
+    for ( uint j = 0 ; j < m_pieces.size(); j+= i*2)
+    {
+      GridDataPiece * dp1 = m_pieces[j];
+      GridDataPiece * dp2 = m_pieces[j+i];
+
+      _LOG("mergin "<<j<<" "<<j+i);
+
+      dp2->g.get_ms_complex().merge_up(dp1->g.get_ms_complex());
+    }
+  }
+}
+
 GridDataManager::GridDataManager
     ( std::string filename,
       uint        size_x,
@@ -211,23 +270,42 @@ GridDataManager::GridDataManager
   m_controller = IModelController::Create();
 
   createDataPieces();
-  
+
   readFile ();
 
   _LOG ( "==========================" );
   _LOG ( "Starting Processing Peices" );
   _LOG ( "--------------------------" );
 
-  if ( m_single_threaded_mode == false )
+  //  try
   {
-    workAllPieces_mt();
+    if ( m_single_threaded_mode == false )
+    {
+      workAllPieces_mt();
 
-    exit(0);
+      mergePieces_mt();
+
+      exit(0);
+    }
+    else
+    {
+      workAllPieces_st();
+      mergePieces_st();
+    }
   }
-  else
-  {
-    workAllPieces_st();
-  }
+
+  //  catch(std::exception &e)
+  //  {
+  //    for(uint i = 0 ; i <m_pieces.size();++i)
+  //    {
+  //      std::stringstream ss;
+  //      ss<<"log/dp-"<<i;
+  //
+  //      logAllConnections(ss.str());
+  //
+  //      throw e;
+  //    }
+  //  }
 
   _LOG ( "--------------------------" );
   _LOG ( "Finished Processing peices" );
@@ -242,6 +320,8 @@ GridDataManager::GridDataManager
     dp->create_grad_rens();
 
     dp->create_surf_ren();
+
+
   }
 
   create_ui();
@@ -502,7 +582,7 @@ void  GridDataPiece::create_cp_rens()
     uint cp_ren_idx = crit_ms_idx_ren_idx_map[i];
 
     for(conn_t::iterator it = g.get_ms_complex().m_cps[i]->asc.begin();
-        it != g.get_ms_complex().m_cps[i]->asc.end(); ++it)
+    it != g.get_ms_complex().m_cps[i]->asc.end(); ++it)
     {
       if(g.get_ms_complex().m_cps[*it]->isCancelled)
         throw std::logic_error("this cancelled cp should not be present here");
@@ -518,7 +598,7 @@ void  GridDataPiece::create_cp_rens()
       continue;
 
     for(conn_t::iterator it = g.get_ms_complex().m_cps[i]->des.begin();
-        it != g.get_ms_complex().m_cps[i]->des.end(); ++it)
+    it != g.get_ms_complex().m_cps[i]->des.end(); ++it)
     {
       if(g.get_ms_complex().m_cps[*it]->isCancelled)
         throw std::logic_error("this cancelled cp should not be present here");
@@ -554,28 +634,28 @@ void GridDataPiece::create_grad_rens()
   for(cell_coord_t y = r.bottom(); y<=r.top(); ++y)
     for(cell_coord_t x = r.left(); x<=r.right(); ++x)
     {
-      cellid_t c = cellid_t(x,y);
-      if(g.isCellPaired(c))
+    cellid_t c = cellid_t(x,y);
+    if(g.isCellPaired(c))
+    {
+      cellid_t p = g.getCellPairId(c);
+
+      if(g.isPairOrientationCorrect(p,c))
       {
-        cellid_t p = g.getCellPairId(c);
+        double x,y,z;
 
-        if(g.isPairOrientationCorrect(p,c))
-        {
-          double x,y,z;
+        g.getCellCoord(c,x,y,z);
+        cell_locations.push_back(glutils::vertex_t(x,y,z) );
 
-          g.getCellCoord(c,x,y,z);
-          cell_locations.push_back(glutils::vertex_t(x,y,z) );
+        g.getCellCoord(p,x,y,z);
+        cell_locations.push_back(glutils::vertex_t(x,y,z) );
 
-          g.getCellCoord(p,x,y,z);
-          cell_locations.push_back(glutils::vertex_t(x,y,z) );
+        pair_idxs.push_back
+            (glutils::line_idx_t(cell_locations.size()-2,
+                                 cell_locations.size()-1));
 
-          pair_idxs.push_back
-              (glutils::line_idx_t(cell_locations.size()-2,
-                                   cell_locations.size()-1));
-
-        }
       }
     }
+  }
 
   ren_grad = glutils::create_buffered_lines_ren
              (glutils::make_buf_obj(cell_locations),
@@ -596,14 +676,14 @@ void GridDataPiece::create_surf_ren()
   for(cell_coord_t y = r.bottom(); y<=r.top(); y+=2)
     for(cell_coord_t x = r.left(); x<=r.right(); x+=2)
     {
-      cellid_t c = cellid_t(x,y);
+    cellid_t c = cellid_t(x,y);
 
-      double x,y,z;
+    double x,y,z;
 
-      g.getCellCoord(c,x,y,z);
+    g.getCellCoord(c,x,y,z);
 
-      point_locs.push_back(glutils::vertex_t(x,y,z));
-    }
+    point_locs.push_back(glutils::vertex_t(x,y,z));
+  }
 
   rect_size_t s = r.size();
 

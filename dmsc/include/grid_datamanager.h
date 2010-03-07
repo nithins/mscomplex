@@ -82,11 +82,11 @@ class GridDataManager:
 
 {
 
-typedef GridDataset::rect_t rect_t;
-typedef GridDataset::cell_coord_t cell_coord_t;
-typedef GridDataset::cellid_t cellid_t;
-typedef GridDataset::rect_point_t rect_point_t;
-typedef GridDataset::rect_size_t rect_size_t;
+  typedef GridDataset::rect_t rect_t;
+  typedef GridDataset::cell_coord_t cell_coord_t;
+  typedef GridDataset::cellid_t cellid_t;
+  typedef GridDataset::rect_point_t rect_point_t;
+  typedef GridDataset::rect_size_t rect_size_t;
 
 public:
 
@@ -122,13 +122,15 @@ public:
 
   void workPiece ( GridDataPiece  * );
 
+  void mergePieces ( GridDataPiece  * ,GridDataPiece  *);
+
   void workAllPieces_mt( );
 
   void workAllPieces_st( );
 
-  void workPiecesAtFixedLevel_mt ( int i );
+  void mergePieces_mt( );
 
-  void workPiecesAtFixedLevel_st ( int i );
+  void mergePieces_st( );
 
   void renderDataPiece ( GridDataPiece  *dp ) const;
 

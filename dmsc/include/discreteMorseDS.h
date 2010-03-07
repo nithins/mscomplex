@@ -89,7 +89,9 @@ public:
   {
     typedef std::multiset<uint> connection_t;
 
-    id_t cellid;
+    id_t cellid;    
+
+    u_int pair_idx;
 
     bool isCancelled;
     bool isOnStrangulationPath;
@@ -100,7 +102,9 @@ public:
       isCancelled           = false;
       isOnStrangulationPath = false;
       isBoundryCancelable   = false;
+      pair_idx              = (u_int) -1;
     }
+    
 
     std::set<id_t> asc_disc;
     std::set<id_t> des_disc;
