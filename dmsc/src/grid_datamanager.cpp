@@ -34,29 +34,13 @@
 
 using namespace std;
 
-GridDataPiece::GridDataPiece ( rect_t r, rect_t e):
-    g ( r,e),
-    level(0),
-    m_bShowSurface ( false ),
-    m_bShowCps ( false ),
-    m_bShowMsGraph ( false ),
-    m_bShowGrad ( false ),
-    ren_surf(NULL),
-    ren_grad(NULL)
-{
-  memset(ren_cp,0,sizeof(ren_cp));
-  memset(ren_cp,0,sizeof(ren_cp_labels));
-  memset(ren_cp,0,sizeof(ren_cp_conns));
-}
-
-
 void GridDataManager::createDataPieces ()
 {
 
   rect_t r(cellid_t(0,0),cellid_t(2*(m_size_x-1),2*(m_size_y-1)));
   rect_t e(cellid_t(0,0),cellid_t(2*(m_size_x-1),2*(m_size_y-1)));
 
-  createPieces_quadtree(r,e,3);
+  createPieces_quadtree(r,e,m_num_levels);
   return;
 }
 
@@ -257,12 +241,14 @@ void GridDataManager::mergePieces_st( )
 
 GridDataManager::GridDataManager
     ( std::string filename,
-      uint        size_x,
-      uint        size_y,
-      bool        single_threaded_mode):
+      u_int        size_x,
+      u_int        size_y,
+      u_int        num_levels,
+      bool         single_threaded_mode):
     m_filename(filename),
     m_size_x(size_x),
     m_size_y(size_y),
+    m_num_levels(num_levels),
     m_single_threaded_mode(single_threaded_mode),
     m_bShowCriticalPointLabels(false)
 {
@@ -513,6 +499,21 @@ bool GridDataManager::WheelEvent
   }
 
   return false;
+}
+
+GridDataPiece::GridDataPiece ( rect_t r, rect_t e):
+    g ( r,e),
+    level(0),
+    m_bShowSurface ( false ),
+    m_bShowCps ( false ),
+    m_bShowMsGraph ( false ),
+    m_bShowGrad ( false ),
+    ren_surf(NULL),
+    ren_grad(NULL)
+{
+  memset(ren_cp,0,sizeof(ren_cp));
+  memset(ren_cp,0,sizeof(ren_cp_labels));
+  memset(ren_cp,0,sizeof(ren_cp_conns));
 }
 
 void  GridDataPiece::create_cp_rens()

@@ -90,22 +90,24 @@ class GridDataManager:
 
 public:
 
-  std::vector<GridDataPiece *>                   m_pieces;
+  std::vector<GridDataPiece *> m_pieces;
 
-  bool                                           m_bShowCriticalPointLabels;
-  std::string                                    m_filename;
-  uint                                           m_size_x;
-  uint                                           m_size_y;
-  bool                                           m_single_threaded_mode;
+  bool                         m_bShowCriticalPointLabels;
+  std::string                  m_filename;
+  u_int                        m_size_x;
+  u_int                        m_size_y;
+  u_int                        m_num_levels;
+  bool                         m_single_threaded_mode;
 
-  IModelController                              *m_controller;
+  IModelController            *m_controller;
 
 public:
 
   GridDataManager
       ( std::string filename,
-        uint        size_x,
-        uint        size_y,
+        u_int        size_x,
+        u_int        size_y,
+        u_int        num_levels,
         bool        threaded_mode);
 
   virtual ~GridDataManager ();

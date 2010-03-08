@@ -20,7 +20,7 @@ string usage_string(const char * progname)
   ss<<progname<<" ";
 
   ss<<"-<qf/gf> <filename> -d <x_dim> <y_dim> "\
-      "[--max-levels <max-levels>] "\
+      "[-l <levels>] "\
       "[--buffer-zone-width <buf-zone-width>]"\
       "[-st]"<<endl;
 
@@ -34,7 +34,7 @@ IModel * parse_quad_grid(string cmdline)
 
   const boost::regex dim_re ( "(-d ([[:digit:]]+) ([[:digit:]]+))" );
 
-  const boost::regex max_levels_re ( "(--max-levels ([[:digit:]]+))" );
+  const boost::regex max_levels_re ( "(-l ([[:digit:]]+))" );
 
   const boost::regex buffer_zone_re ( "(--buffer-zone-width ([[:digit:]]+))" );
 
@@ -107,11 +107,15 @@ IModel * parse_grid(string cmdline)
 
   const boost::regex st_re ( "(-st)" );
 
+  const boost::regex num_levels_re ( "(-l ([[:digit:]]+))" );
+
   uint   size_x = 0, size_y = 0;
 
   string filename;
 
   bool   single_thread = false;
+
+  uint   num_levels  = 1;
 
   boost::smatch matches;
 
@@ -144,7 +148,14 @@ IModel * parse_grid(string cmdline)
     single_thread = true;
   }
 
-  return new GridDataManager(filename,size_x,size_y,single_thread);
+  if ( regex_search ( cmdline,matches, num_levels_re ) )
+  {
+    string ml ( matches[2].first,matches[2].second );
+
+    num_levels = atoi ( ml.c_str() );
+  }
+
+  return new GridDataManager(filename,size_x,size_y,num_levels,single_thread);
 }
 
 
