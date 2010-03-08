@@ -134,9 +134,14 @@ void GridDataManager::workPiece ( GridDataPiece *dp )
   dp->g.computeDiscs ();
 }
 
-void GridDataManager::mergePieces ( GridDataPiece  * dp1,GridDataPiece  *dp2)
+void GridDataManager::mergePiecesUp ( GridDataPiece  * dp1,GridDataPiece  *dp2)
 {
   dp2->g.get_ms_complex().merge_up(dp1->g.get_ms_complex());
+}
+
+void GridDataManager::mergePiecesDown ( GridDataPiece  * dp1,GridDataPiece  *dp2)
+{
+
 }
 
 void GridDataManager::workAllPieces_mt( )
@@ -185,7 +190,7 @@ void GridDataManager::workAllPieces_st( )
   _LOG ( "End calculating asc/des manifolds for all pieces " );
 }
 
-void GridDataManager::mergePieces_mt( )
+void GridDataManager::mergePiecesUp_mt( )
 {
 
   _LOG("Begin Merge");
@@ -198,13 +203,13 @@ void GridDataManager::mergePieces_mt( )
 
     for ( uint j = 0 ; j < m_pieces.size(); j+= i*2)
     {
-      _LOG("Kicking off merging "<<j<<" "<<j+i);
+      _LOG("Kicking off merging Up "<<j<<" "<<j+i);
 
       GridDataPiece * dp1 = m_pieces[j];
       GridDataPiece * dp2 = m_pieces[j+i];
 
       threads[threadno] = new boost::thread
-                          ( boost::bind ( &GridDataManager::mergePieces,this,dp1,dp2 ));
+                          ( boost::bind ( &GridDataManager::mergePiecesUp,this,dp1,dp2 ));
       threadno++;
 
     }
@@ -223,7 +228,7 @@ void GridDataManager::mergePieces_mt( )
   _LOG("End Merge");
 }
 
-void GridDataManager::mergePieces_st( )
+void GridDataManager::mergePiecesUp_st( )
 {
   for ( uint i = 1 ; i < m_pieces.size(); i*= 2)
   {
@@ -232,9 +237,25 @@ void GridDataManager::mergePieces_st( )
       GridDataPiece * dp1 = m_pieces[j];
       GridDataPiece * dp2 = m_pieces[j+i];
 
-      _LOG("mergin "<<j<<" "<<j+i);
+      _LOG("merging Up "<<j<<" "<<j+i);
 
-      dp2->g.get_ms_complex().merge_up(dp1->g.get_ms_complex());
+      GridDataManager::mergePiecesUp(dp1,dp2);
+    }
+  }
+}
+
+void GridDataManager::mergePiecesDown_st()
+{
+  for ( uint i = m_pieces.size()/2 ; i >= 1 ; i/= 2)
+  {
+    for ( int j = m_pieces.size()-i ; j >=0 ; j-= i*2)
+    {
+      GridDataPiece * dp1 = m_pieces[j];
+      GridDataPiece * dp2 = m_pieces[j+i];
+
+      _LOG("merging Down "<<j-i<<" "<<j);
+
+      GridDataManager::mergePiecesDown(dp1,dp2);
     }
   }
 }
@@ -269,14 +290,17 @@ GridDataManager::GridDataManager
     {
       workAllPieces_mt();
 
-      mergePieces_mt();
+      mergePiecesUp_mt();
 
       exit(0);
     }
     else
     {
       workAllPieces_st();
-      mergePieces_st();
+
+      mergePiecesUp_st();
+
+      mergePiecesDown_st();
     }
   }
 

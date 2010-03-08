@@ -124,15 +124,21 @@ public:
 
   void workPiece ( GridDataPiece  * );
 
-  void mergePieces ( GridDataPiece  * ,GridDataPiece  *);
+  void mergePiecesUp ( GridDataPiece  * ,GridDataPiece  *);
+
+  void mergePiecesDown ( GridDataPiece  * ,GridDataPiece  *);
 
   void workAllPieces_mt( );
 
   void workAllPieces_st( );
 
-  void mergePieces_mt( );
+  void mergePiecesUp_mt( );
 
-  void mergePieces_st( );
+  void mergePiecesUp_st( );
+
+  void mergePiecesDown_mt( );
+
+  void mergePiecesDown_st( );
 
   void renderDataPiece ( GridDataPiece  *dp ) const;
 
