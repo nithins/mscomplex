@@ -7,7 +7,7 @@
 typedef GridDataset::cellid_t cellid_t;
 
 GridDataset::GridDataset (const rect_t &r,const rect_t &e) :
-    m_rect (r),m_ext_rect (e),m_msgraph(r,e)
+    m_rect (r),m_ext_rect (e)
 {
 
   // TODO: assert that the given rect is of even size..
@@ -68,22 +68,24 @@ bool GridDataset::ptLt (cellid_t c1,cellid_t c2) const
 
 GridDataset::cell_fn_t GridDataset::get_cell_fn (cellid_t c) const
 {
-  if (getCellDim (c) != 0)
-    throw std::logic_error ("incorrect cell type requsting vert fn value");
+  cell_fn_t  fn = 0.0;
 
-  c[0] /=2;
+  cellid_t pts[20];
 
-  c[1] /=2;
+  uint pts_ct = getCellPoints (c,pts);
 
-  double ret = m_vertex_fns (c);
+  for (int j = 0 ; j <pts_ct ;++j)
+    fn += m_vertex_fns (pts[j]/2);
 
-  return ret;
+  fn /= pts_ct;
+
+  return fn;
 }
 
 void GridDataset::set_cell_fn (cellid_t c,cell_fn_t f)
 {
   if (getCellDim (c) != 0)
-    throw std::logic_error ("incorrect cell type requsting vert fn value");
+    throw std::logic_error ("values only for vertices are specified");
 
   c[0] /=2;
 
@@ -243,27 +245,29 @@ bool GridDataset::isCellExterior (cellid_t c) const
   return (!m_rect.contains (c) && m_ext_rect.contains (c));
 }
 
-void GridDataset::connectCps (cellid_t c1, cellid_t c2)
+void connectCps (GridDataset::mscomplex_t *msgraph,
+                 GridDataset::cellid_t c1,
+                 GridDataset::cellid_t c2)
 {
-  if (getCellDim (c1) <getCellDim (c2))
+  if (GridDataset::s_getCellDim (c1) <GridDataset::s_getCellDim (c2))
     std::swap (c1,c2);
 
-  if (getCellDim (c1) != getCellDim (c2) +1)
+  if (GridDataset::s_getCellDim (c1) != GridDataset::s_getCellDim (c2) +1)
     throw std::logic_error ("must connect i,i+1 cp (or vice versa)");
 
-  if (m_msgraph.m_id_cp_map.find (c1) == m_msgraph.m_id_cp_map.end())
+  if (msgraph->m_id_cp_map.find (c1) == msgraph->m_id_cp_map.end())
     throw std::logic_error (_SSTR ("cell not in id_cp_map c1="<<c1));
 
-  if (m_msgraph.m_id_cp_map.find (c2) == m_msgraph.m_id_cp_map.end())
+  if (msgraph->m_id_cp_map.find (c2) == msgraph->m_id_cp_map.end())
     throw std::logic_error (_SSTR ("cell not in id_cp_map c2="<<c2));
 
-  uint cp1_ind = m_msgraph.m_id_cp_map[c1];
+  uint cp1_ind = msgraph->m_id_cp_map[c1];
 
-  uint cp2_ind = m_msgraph.m_id_cp_map[c2];
+  uint cp2_ind = msgraph->m_id_cp_map[c2];
 
-  critpt_t *cp1 = m_msgraph.m_cps[cp1_ind];
+  GridDataset::critpt_t *cp1 = msgraph->m_cps[cp1_ind];
 
-  critpt_t *cp2 = m_msgraph.m_cps[cp2_ind];
+  GridDataset::critpt_t *cp2 = msgraph->m_cps[cp2_ind];
 
   cp1->des.insert (cp2_ind);
 
@@ -375,11 +379,13 @@ inline void add_to_grad_tree_proxy (GridDataset::cellid_t)
   return;
 }
 
-void  GridDataset::computeDiscs()
+void  GridDataset::computeConnectivity(mscomplex_t *msgraph)
 {
 
   addCriticalPointsToMSComplex
-      (&m_msgraph,this,m_critical_cells.begin(),m_critical_cells.end());
+      (msgraph,this,m_critical_cells.begin(),m_critical_cells.end());
+
+  msgraph->m_cp_fns.resize(m_critical_cells.size());
 
   for (cellid_list_t::iterator it = m_critical_cells.begin() ;
   it != m_critical_cells.end();++it)
@@ -391,13 +397,13 @@ void  GridDataset::computeDiscs()
       track_gradient_tree_bfs
           (this,*it,GRADIENT_DIR_UPWARD,
            add_to_grad_tree_proxy,
-           boost::bind (&GridDataset::connectCps,this,*it,_1));
+           boost::bind (&connectCps,msgraph,*it,_1));
       break;
     case 2:
       track_gradient_tree_bfs
           (this,*it,GRADIENT_DIR_DOWNWARD,
            add_to_grad_tree_proxy,
-           boost::bind (&GridDataset::connectCps,this,_1,*it));
+           boost::bind (&connectCps,msgraph,*it,_1));
       break;
     default:
       break;
@@ -409,14 +415,16 @@ void  GridDataset::computeDiscs()
   {
     cellid_t c = *it;
 
-    uint cp_idx = m_msgraph.m_id_cp_map[c];
+    uint cp_idx = msgraph->m_id_cp_map[c];
+
+    msgraph->m_cp_fns[cp_idx] = get_cell_fn(c);
 
     if(!isCellPaired(c))  continue;
 
-    m_msgraph.m_cps[cp_idx]->isBoundryCancelable = true;
+    msgraph->m_cps[cp_idx]->isBoundryCancelable = true;
 
-    m_msgraph.m_cps[cp_idx]->pair_idx =
-        m_msgraph.m_id_cp_map[getCellPairId(c)];
+    msgraph->m_cps[cp_idx]->pair_idx =
+        msgraph->m_id_cp_map[getCellPairId(c)];
   }
 }
 
@@ -430,45 +438,20 @@ void GridDataset::getCellCoord (cellid_t c,double &x,double &y,double &z)
 
   if(m_ext_rect.contains(c))
   {
-    uint pts_ct = getCellPoints (c,pts);
+    y= get_cell_fn(c);
 
-    for (int j = 0 ; j <pts_ct ;++j)
-      y += get_cell_fn (pts[j]);
-
-    y /= pts_ct;
   }
 }
 
-void GridMSComplex::merge_up (mscomplex_t &msc)
+GridMSComplex::mscomplex_t * GridMSComplex::merge_up
+    (const mscomplex_t& msc1,
+     const mscomplex_t& msc2)
 {
 
-  // make a union of the critical points in this
-  for (uint i = 0 ; i <msc.m_cps.size();++i)
-  {
-    critpt_t *src_cp = msc.m_cps[i];
-
-    // if it is contained or not
-    if (m_id_cp_map.count (src_cp->cellid) > 0)
-      continue;
-
-    // allocate a new cp
-    critpt_t* dest_cp = new critpt_t;
-
-    // copy over the trivial data
-    dest_cp->isCancelled               = src_cp->isCancelled;
-    dest_cp->isBoundryCancelable       = src_cp->isBoundryCancelable;
-    dest_cp->isOnStrangulationPath     = src_cp->isOnStrangulationPath;
-    dest_cp->cellid                    = src_cp->cellid;
-    m_id_cp_map[dest_cp->cellid]       = m_cps.size();
-
-    m_cps.push_back (dest_cp);
-
-  }
-
   // form the intersection rect
-  rect_t ixn(m_rect);
+  rect_t ixn;
 
-  if (!m_rect.intersection (msc.m_rect,ixn))
+  if (!msc2.m_rect.intersection (msc1.m_rect,ixn))
     throw std::logic_error ("rects should intersect for merge");
 
   if ( (ixn.left() != ixn.right()) && (ixn.top() != ixn.bottom()))
@@ -477,86 +460,96 @@ void GridMSComplex::merge_up (mscomplex_t &msc)
   if (ixn.bottom_left() == ixn.top_right())
     throw std::logic_error ("rects cannot merge along a point alone");
 
-  // TODO: ensure that the uninon of  rects is not including anything extra
+  // TODO: ensure that the union of  rects is not including anything extra
 
-  // TODO: put away the old rects for unmerging
+  rect_t r =
+      rect_t (std::min (msc1.m_rect.bottom_left(),msc2.m_rect.bottom_left()),
+              std::max (msc1.m_rect.top_right(),msc2.m_rect.top_right()));
 
-  m_ext_rect =
-      rect_t (std::min (m_ext_rect.bottom_left(),msc.m_ext_rect.bottom_left()),
-              std::max (m_ext_rect.top_right(),msc.m_ext_rect.top_right()));
+  rect_t e =
+      rect_t (std::min (msc1.m_ext_rect.bottom_left(),msc2.m_ext_rect.bottom_left()),
+              std::max (msc1.m_ext_rect.top_right(),msc2.m_ext_rect.top_right()));
 
-  m_rect =
-      rect_t (std::min (m_rect.bottom_left(),msc.m_rect.bottom_left()),
-              std::max (m_rect.top_right(),msc.m_rect.top_right()));
+  mscomplex_t * out_msc = new mscomplex_t(r,e);
 
-  // copy over connectivity information
-  for (uint i = 0 ; i <msc.m_cps.size();++i)
+  const mscomplex_t* msc_arr[] = {&msc1,&msc2};
+
+  // make a union of the critical points in this
+  for (uint i = 0 ; i <2;++i)
   {
-    critpt_t *src_cp = msc.m_cps[i];
+    const mscomplex_t * msc = msc_arr[i];
 
-    if (src_cp->isCancelled)
-      throw std::logic_error ("src cp should not yet be cancelled");
-
-    if (m_id_cp_map.count (src_cp->cellid) != 1)
-      throw std::logic_error ("missing cp in src");
-
-    critpt_t *dest_cp = m_cps[m_id_cp_map[src_cp->cellid]];
-
-    if(src_cp->isBoundryCancelable)
+    for (uint j = 0 ; j <msc->m_cps.size();++j)
     {
-      critpt_t *src_pair_cp = msc.m_cps[src_cp->pair_idx];
+      const critpt_t *src_cp = msc->m_cps[j];
 
-      if(src_pair_cp->pair_idx != i)
+      // if it is contained or not
+      if (i == 1 && out_msc->m_id_cp_map.count (src_cp->cellid) > 0)
+        continue;
+
+      if(src_cp->isCancelled)
+        continue;
+
+      // allocate a new cp
+      critpt_t* dest_cp = new critpt_t;
+
+      // copy over the trivial data
+      dest_cp->isCancelled                  = src_cp->isCancelled;
+      dest_cp->isBoundryCancelable          = src_cp->isBoundryCancelable;
+      dest_cp->isOnStrangulationPath        = src_cp->isOnStrangulationPath;
+      dest_cp->cellid                       = src_cp->cellid;
+
+      out_msc->m_id_cp_map[dest_cp->cellid] = out_msc->m_cps.size();
+
+      out_msc->m_cps.push_back (dest_cp);
+      out_msc->m_cp_fns.push_back(msc->m_cp_fns[j]);
+
+    }
+  }
+
+  for (uint i = 0 ; i <2;++i)
+  {
+    const mscomplex_t * msc = msc_arr[i];
+
+    // copy over connectivity information
+    for (uint j = 0 ; j <msc->m_cps.size();++j)
+    {
+      const critpt_t *src_cp = msc->m_cps[j];
+
+      if(src_cp->isCancelled)
+        continue;
+
+      critpt_t *dest_cp = out_msc->m_cps[out_msc->m_id_cp_map[src_cp->cellid]];
+
+      if(src_cp->isBoundryCancelable)
       {
-        std::stringstream ss;
+        critpt_t *src_pair_cp = msc->m_cps[src_cp->pair_idx];
 
-        ss<<"pairing is not reflected in the other"<<std::endl;
-        ss<<"src_cp->cellid ="<<src_cp->cellid <<std::endl;
-        ss<<"src_cp->pair_idx ="<<src_cp->pair_idx <<std::endl;
-        ss<<"src_pair_cp->isCancelled ="<<src_pair_cp->isCancelled <<std::endl;
-        ss<<"src_pair_cp->pair_idx = "<<src_pair_cp->pair_idx<<std::endl;
-        ss<<"src_pair_cp->isBc="<<src_pair_cp->isBoundryCancelable <<std::endl;
-        ss<<"i= "<<i<<std::endl;
-
-        throw std::logic_error(ss.str());
+        dest_cp->pair_idx = out_msc->m_id_cp_map[src_pair_cp->cellid];
       }
 
-      if( !src_pair_cp->isBoundryCancelable )
-        throw std::logic_error ("the other is not boundry cancelable");
+      const conn_t *acdc_src[]  = {&src_cp->asc, &src_cp->des};
 
-      if (m_id_cp_map.count (src_pair_cp->cellid) != 1)
-        throw std::logic_error ("missing cp src_pair_cp");
+      conn_t *acdc_dest[] = {&dest_cp->asc,&dest_cp->des};
 
-      dest_cp->pair_idx = m_id_cp_map[src_pair_cp->cellid];
-    }
+      bool is_src_cmn_bndry = (ixn.contains(src_cp->cellid) && i == 1);
 
-    conn_t *acdc_src[]  = {&src_cp->asc, &src_cp->des};
-
-    conn_t *acdc_dest[] = {&dest_cp->asc,&dest_cp->des};
-
-    bool is_src_cmn_bndry = ixn.contains(src_cp->cellid);
-
-    for (uint j = 0 ; j < 2; ++j)
-    {
-      for (conn_iter_t it = acdc_src[j]->begin(); it != acdc_src[j]->end();++it)
+      for (uint j = 0 ; j < 2; ++j)
       {
-        critpt_t *conn_cp = msc.m_cps[*it];
-
-        // common boundry connections would have been found along the boundry
-        if( is_src_cmn_bndry && ixn.contains(conn_cp->cellid))
-          continue;
-
-        if (conn_cp->isCancelled)
-          throw std::logic_error ("conn cp should not yet be cancelled");
-
-        if (m_id_cp_map.count (conn_cp->cellid) != 1)
+        for (const_conn_iter_t it = acdc_src[j]->begin();
+              it != acdc_src[j]->end();++it)
         {
-          std::stringstream ss;
-          ss<<"missing conn cp"<<conn_cp->cellid;
-          throw std::logic_error (ss.str());
-        }
+          const critpt_t *conn_cp = msc->m_cps[*it];
 
-        acdc_dest[j]->insert (m_id_cp_map[conn_cp->cellid]);
+          // common boundry connections would have been found along the boundry
+          if( is_src_cmn_bndry && ixn.contains(conn_cp->cellid))
+            continue;
+
+          if (conn_cp->isCancelled)
+            continue;
+
+          acdc_dest[j]->insert (out_msc->m_id_cp_map[conn_cp->cellid]);
+        }
       }
     }
   }
@@ -568,106 +561,41 @@ void GridMSComplex::merge_up (mscomplex_t &msc)
     {
       cellid_t c(x,y);
 
-      if(m_id_cp_map.count(c) != 1)
+      if(out_msc->m_id_cp_map.count(c) != 1)
         throw std::logic_error("missing common bndry cp");
 
-      u_int src_idx = m_id_cp_map[c];
+      u_int src_idx = out_msc->m_id_cp_map[c];
 
-      critpt_t *src_cp = m_cps[src_idx];
+      critpt_t *src_cp = out_msc->m_cps[src_idx];
 
       if(src_cp->isCancelled || !src_cp->isBoundryCancelable)
         continue;
 
       u_int pair_idx = src_cp->pair_idx;
 
-      cellid_t p = m_cps[pair_idx]->cellid;
+      cellid_t p = out_msc->m_cps[pair_idx]->cellid;
 
-      if(!m_rect.isInInterior(c)&& !m_ext_rect.isOnBoundry(c))
+      if(!out_msc->m_rect.isInInterior(c)&& !out_msc->m_ext_rect.isOnBoundry(c))
         continue;
 
-      if(!m_rect.isInInterior(p)&& !m_ext_rect.isOnBoundry(p))
+      if(!out_msc->m_rect.isInInterior(p)&& !out_msc->m_ext_rect.isOnBoundry(p))
         continue;
 
-      cancelPairs(this,src_idx,pair_idx);
+      cancelPairs(out_msc,src_idx,pair_idx);
     }
   }
 
-  //copy the compacted resulting complex to msc
+  return out_msc;
+}
 
-  std::for_each(msc.m_cps.begin(),msc.m_cps.end(),&delete_ftor<critpt_t>);
-  msc.m_id_cp_map.clear();
-  msc.m_cps.clear();
+void GridMSComplex::clear()
+{
+  std::for_each(m_cps.begin(),m_cps.end(),&delete_ftor<critpt_t>);
+  m_cps.clear();
+  m_id_cp_map.clear();
+}
 
-  msc.m_rect = m_rect;
-  msc.m_ext_rect = m_ext_rect;
+void GridMSComplex::merge_down(GridMSComplex::mscomplex_t& msc)
+{
 
-  for (uint i = 0 ; i <m_cps.size();++i)
-  {
-    critpt_t *src_cp = m_cps[i];
-
-    if (src_cp->isCancelled)
-      continue;
-
-    // allocate a new cp
-    critpt_t* dest_cp = new critpt_t;
-
-    // copy over the trivial data
-    dest_cp->isCancelled               = src_cp->isCancelled;
-    dest_cp->isBoundryCancelable       = src_cp->isBoundryCancelable;
-    dest_cp->isOnStrangulationPath     = src_cp->isOnStrangulationPath;
-    dest_cp->cellid                    = src_cp->cellid;
-    msc.m_id_cp_map[dest_cp->cellid]   = msc.m_cps.size();
-
-    msc.m_cps.push_back (dest_cp);
-  }
-
-  // copy over connectivity information
-  for (uint i = 0 ; i <m_cps.size();++i)
-  {
-    critpt_t *src_cp = m_cps[i];
-
-    if (src_cp->isCancelled)
-      continue;
-
-    critpt_t *dest_cp = msc.m_cps[msc.m_id_cp_map[src_cp->cellid]];
-
-    if(src_cp->isBoundryCancelable)
-    {
-      critpt_t *src_pair_cp = m_cps[src_cp->pair_idx];
-
-      if(msc.m_id_cp_map.count(src_pair_cp->cellid) == 0)
-      {
-
-        critpt_t *src_pair_pair_cp = m_cps[src_pair_cp->pair_idx];
-        critpt_t *src_pair_pair_pair_cp = m_cps[src_pair_pair_cp->pair_idx];
-
-        _LOG_VAR(i);
-        _LOG_VAR(src_cp->pair_idx);
-        _LOG_VAR(src_pair_cp->pair_idx);
-        _LOG_VAR(src_pair_pair_cp->pair_idx);
-        _LOG_VAR(src_pair_pair_pair_cp->pair_idx);
-
-        throw std::logic_error("missing pair");
-      }
-
-      dest_cp->pair_idx     = msc.m_id_cp_map[src_pair_cp->cellid];
-    }
-
-    conn_t *acdc_src[]  = {&src_cp->asc, &src_cp->des};
-
-    conn_t *acdc_dest[] = {&dest_cp->asc,&dest_cp->des};
-
-    for (uint j = 0 ; j < 2; ++j)
-    {
-      for (conn_iter_t it = acdc_src[j]->begin(); it != acdc_src[j]->end();++it)
-      {
-        critpt_t *conn_cp = m_cps[*it];
-
-        if (conn_cp->isCancelled)
-          continue;
-
-        acdc_dest[j]->insert (msc.m_id_cp_map[conn_cp->cellid]);
-      }
-    }
-  }
 }

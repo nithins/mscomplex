@@ -152,6 +152,9 @@ class rectangle_complex
 
       }
 
+      rectangle_def(){}
+
+
       bool isInInterior ( const point_def & p ) const
       {
         return

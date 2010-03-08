@@ -52,9 +52,10 @@ void GridDataManager::createPieces_quadtree(rect_t r,rect_t e,u_int level )
     stringstream ss;
     ss<<r;
 
-    GridDataPiece *dp = new GridDataPiece(r,e);
-    dp->g.init();
-    dp->label = ss.str();
+    GridDataPiece *dp = new GridDataPiece();
+    dp->dataset = new GridDataset(r,e);
+    dp->msgraph = new GridMSComplex(r,e);
+    dp->dataset->init();
     m_pieces.push_back(dp);
 
     return;
@@ -105,14 +106,14 @@ void GridDataManager::readFile ( )
 
     cellid_t p(2*x,2*y);
 
-    if(!m_pieces[dp_idx]->g.get_ext_rect().contains(p))
+    if(!m_pieces[dp_idx]->dataset->get_ext_rect().contains(p))
       ++dp_idx;
 
-    m_pieces[dp_idx]->g.set_cell_fn(p,data);
+    m_pieces[dp_idx]->dataset->set_cell_fn(p,data);
 
     if(dp_idx+1 < m_pieces.size() &&
-       m_pieces[dp_idx+1]->g.get_ext_rect().contains(p))
-      m_pieces[dp_idx+1]->g.set_cell_fn(p,data);
+       m_pieces[dp_idx+1]->dataset->get_ext_rect().contains(p))
+      m_pieces[dp_idx+1]->dataset->set_cell_fn(p,data);
   }
 }
 
@@ -130,13 +131,21 @@ void GridDataManager::workPiece ( GridDataPiece *dp )
 {
   initDataPieceForWork ( dp );
 
-  dp->g.assignGradients();
-  dp->g.computeDiscs ();
+  dp->dataset->assignGradients();
+  dp->dataset->computeConnectivity(dp->msgraph);
 }
 
-void GridDataManager::mergePiecesUp ( GridDataPiece  * dp1,GridDataPiece  *dp2)
+GridDataPiece  * GridDataManager::mergePiecesUp
+    ( GridDataPiece  * dp1,GridDataPiece  *dp2)
 {
-  dp2->g.get_ms_complex().merge_up(dp1->g.get_ms_complex());
+  if(dp1->level != dp2->level)
+    throw std::logic_error("dps must have same level");
+
+  GridDataPiece *p = new GridDataPiece();
+
+  p->level = dp1->level+1;
+  p->msgraph = GridMSComplex::merge_up(*dp1->msgraph,*dp2->msgraph);
+  return p;
 }
 
 void GridDataManager::mergePiecesDown ( GridDataPiece  * dp1,GridDataPiece  *dp2)
@@ -230,18 +239,17 @@ void GridDataManager::mergePiecesUp_mt( )
 
 void GridDataManager::mergePiecesUp_st( )
 {
-  for ( uint i = 1 ; i < m_pieces.size(); i*= 2)
+
+  for ( uint j = 0 ; j < m_pieces.size()/2; ++j)
   {
-    for ( uint j = 0 ; j < m_pieces.size(); j+= i*2)
-    {
-      GridDataPiece * dp1 = m_pieces[j];
-      GridDataPiece * dp2 = m_pieces[j+i];
+    GridDataPiece * dp1 = m_pieces[2*j];
+    GridDataPiece * dp2 = m_pieces[2*j+1];
 
-      _LOG("merging Up "<<j<<" "<<j+i);
+    _LOG("Merging Up "<<2*j<<" "<<2*j+1<<"->"<<m_pieces.size());
 
-      GridDataManager::mergePiecesUp(dp1,dp2);
-    }
+    m_pieces.push_back(GridDataManager::mergePiecesUp(dp1,dp2));
   }
+
 }
 
 void GridDataManager::mergePiecesDown_st()
@@ -343,8 +351,8 @@ void GridDataManager ::logAllConnections(const std::string &prefix)
   {
     GridDataPiece *dp = m_pieces[i];
 
-    fstream outfile((prefix+dp->label+string(".txt")).c_str(),ios::out);
-    print_connections(*((std::ostream *) &outfile),dp->g.get_ms_complex());
+    fstream outfile((prefix+dp->label()+string(".txt")).c_str(),ios::out);
+    print_connections(*((std::ostream *) &outfile),*dp->msgraph);
   }
 
 }
@@ -525,8 +533,9 @@ bool GridDataManager::WheelEvent
   return false;
 }
 
-GridDataPiece::GridDataPiece ( rect_t r, rect_t e):
-    g ( r,e),
+GridDataPiece::GridDataPiece ():
+    dataset(NULL),
+    msgraph(NULL),
     level(0),
     m_bShowSurface ( false ),
     m_bShowCps ( false ),
@@ -542,6 +551,8 @@ GridDataPiece::GridDataPiece ( rect_t r, rect_t e):
 
 void  GridDataPiece::create_cp_rens()
 {
+  if(msgraph == NULL)
+    return;
 
   std::vector<std::string>            crit_labels[3];
   std::vector<glutils::vertex_t>      crit_label_locations[3];
@@ -551,12 +562,12 @@ void  GridDataPiece::create_cp_rens()
   std::vector<glutils::line_idx_t>    crit_conn_idxs[2];
   std::map<uint,uint>                 crit_ms_idx_ren_idx_map;
 
-  for(uint i = 0; i < g.get_ms_complex().m_cps.size(); ++i)
+  for(uint i = 0; i < msgraph->m_cps.size(); ++i)
   {
-    if(g.get_ms_complex().m_cps[i]->isCancelled)
+    if(msgraph->m_cps[i]->isCancelled)
       continue;
 
-    cellid_t c = (g.get_ms_complex().m_cps[i]->cellid);
+    cellid_t c = (msgraph->m_cps[i]->cellid);
 
     uint dim = GridDataset::s_getCellDim(c);
 
@@ -566,9 +577,7 @@ void  GridDataPiece::create_cp_rens()
 
     crit_labels[dim].push_back(ss.str());
 
-    double x,y,z;
-
-    g.getCellCoord(c,x,y,z);
+    double x = c[0],y = msgraph->m_cp_fns[i],z=c[1];
 
     crit_label_locations[dim].push_back(glutils::vertex_t(x,y,z) );
 
@@ -593,23 +602,23 @@ void  GridDataPiece::create_cp_rens()
                 glutils::make_buf_obj());
   }
 
-  for(uint i = 0; i < g.get_ms_complex().m_cps.size(); ++i)
+  for(uint i = 0; i < msgraph->m_cps.size(); ++i)
   {
-    if(g.get_ms_complex().m_cps[i]->isCancelled)
+    if(msgraph->m_cps[i]->isCancelled)
       continue;
 
     uint dim = GridDataset::s_getCellDim
-               (g.get_ms_complex().m_cps[i]->cellid);
+               (msgraph->m_cps[i]->cellid);
 
     if(dim == 2)
       continue;
 
     uint cp_ren_idx = crit_ms_idx_ren_idx_map[i];
 
-    for(conn_t::iterator it = g.get_ms_complex().m_cps[i]->asc.begin();
-    it != g.get_ms_complex().m_cps[i]->asc.end(); ++it)
+    for(conn_t::iterator it = msgraph->m_cps[i]->asc.begin();
+    it != msgraph->m_cps[i]->asc.end(); ++it)
     {
-      if(g.get_ms_complex().m_cps[*it]->isCancelled)
+      if(msgraph->m_cps[*it]->isCancelled)
         throw std::logic_error("this cancelled cp should not be present here");
 
       uint conn_cp_ren_idx = crit_ms_idx_ren_idx_map[*it];
@@ -619,16 +628,16 @@ void  GridDataPiece::create_cp_rens()
 
     }
 
-    if(!g.get_ms_complex().m_cps[i]->isBoundryCancelable)
+    if(!msgraph->m_cps[i]->isBoundryCancelable)
       continue;
 
-    for(conn_t::iterator it = g.get_ms_complex().m_cps[i]->des.begin();
-    it != g.get_ms_complex().m_cps[i]->des.end(); ++it)
+    for(conn_t::iterator it = msgraph->m_cps[i]->des.begin();
+    it != msgraph->m_cps[i]->des.end(); ++it)
     {
-      if(g.get_ms_complex().m_cps[*it]->isCancelled)
+      if(msgraph->m_cps[*it]->isCancelled)
         throw std::logic_error("this cancelled cp should not be present here");
 
-      if(g.get_ms_complex().m_cps[*it]->isBoundryCancelable)
+      if(msgraph->m_cps[*it]->isBoundryCancelable)
         continue;
 
       uint conn_cp_ren_idx = crit_ms_idx_ren_idx_map[*it];
@@ -650,7 +659,10 @@ void  GridDataPiece::create_cp_rens()
 
 void GridDataPiece::create_grad_rens()
 {
-  rect_t r = g.get_ext_rect();
+  if(dataset == NULL)
+    return;
+
+  rect_t r = dataset->get_ext_rect();
 
   std::vector<glutils::vertex_t>      cell_locations;
   std::vector<glutils::line_idx_t>    pair_idxs;
@@ -660,18 +672,18 @@ void GridDataPiece::create_grad_rens()
     for(cell_coord_t x = r.left(); x<=r.right(); ++x)
     {
     cellid_t c = cellid_t(x,y);
-    if(g.isCellPaired(c))
+    if(dataset->isCellPaired(c))
     {
-      cellid_t p = g.getCellPairId(c);
+      cellid_t p = dataset->getCellPairId(c);
 
-      if(g.isPairOrientationCorrect(p,c))
+      if(dataset->isPairOrientationCorrect(p,c))
       {
         double x,y,z;
 
-        g.getCellCoord(c,x,y,z);
+        dataset->getCellCoord(c,x,y,z);
         cell_locations.push_back(glutils::vertex_t(x,y,z) );
 
-        g.getCellCoord(p,x,y,z);
+        dataset->getCellCoord(p,x,y,z);
         cell_locations.push_back(glutils::vertex_t(x,y,z) );
 
         pair_idxs.push_back
@@ -692,7 +704,10 @@ void GridDataPiece::create_grad_rens()
 
 void GridDataPiece::create_surf_ren()
 {
-  rect_t r = g.get_rect();
+  if(dataset == NULL)
+    return;
+
+  rect_t r = dataset->get_rect();
 
   std::vector<glutils::vertex_t>      point_locs;
   std::vector<glutils::tri_idx_t>     tri_idxs;
@@ -705,7 +720,7 @@ void GridDataPiece::create_surf_ren()
 
     double x,y,z;
 
-    g.getCellCoord(c,x,y,z);
+    dataset->getCellCoord(c,x,y,z);
 
     point_locs.push_back(glutils::vertex_t(x,y,z));
   }
@@ -730,6 +745,12 @@ void GridDataPiece::create_surf_ren()
              (glutils::make_buf_obj(point_locs),
               glutils::make_buf_obj(tri_idxs),
               glutils::make_buf_obj());
+}
 
+std::string GridDataPiece::label()
+{
+  std::stringstream ss;
+  ss<<level<<" "<<msgraph->m_rect;
 
+  return ss.str();
 }

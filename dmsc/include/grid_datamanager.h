@@ -44,16 +44,18 @@ namespace Ui
 
 struct GridDataPiece
 {
+  typedef GridDataset::cell_fn_t cell_fn_t;
+  typedef GridDataset::mscomplex_t mscomplex_t;
   typedef GridDataset::cell_coord_t cell_coord_t;
   typedef GridDataset::rect_t rect_t;
   typedef GridDataset::rect_size_t rect_size_t;
   typedef GridDataset::cellid_t cellid_t;
   typedef GridDataset::critpt_conn_t conn_t;
 
-  GridDataset g;
+  GridDataset *dataset;
+  mscomplex_t *msgraph;
 
   uint level;
-  std::string label;
 
   bool m_bShowSurface;
   bool m_bShowCps;
@@ -61,7 +63,6 @@ struct GridDataPiece
   bool m_bShowGrad;
 
   glutils::renderable_t  *ren_surf;
-
   glutils::renderable_t  *ren_grad;
   glutils::renderable_t  *ren_cp_labels[3];
   glutils::renderable_t  *ren_cp[3];
@@ -71,8 +72,9 @@ struct GridDataPiece
   void create_grad_rens();
   void create_surf_ren();
 
-  GridDataPiece ( rect_t r, rect_t e) ;
+  GridDataPiece ( ) ;
 
+  std::string label();
 };
 
 class GridDataManager:
@@ -124,7 +126,7 @@ public:
 
   void workPiece ( GridDataPiece  * );
 
-  void mergePiecesUp ( GridDataPiece  * ,GridDataPiece  *);
+  GridDataPiece  * mergePiecesUp ( GridDataPiece  * ,GridDataPiece  *);
 
   void mergePiecesDown ( GridDataPiece  * ,GridDataPiece  *);
 

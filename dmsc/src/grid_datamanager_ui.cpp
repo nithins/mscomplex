@@ -206,9 +206,7 @@ QVariant GridTreeModel::data ( const QModelIndex &index, int role ) const
 
   _treeitem *item = static_cast<_treeitem*> ( index.internalPointer() );
 
-
-
-  return QString(item->node->label.c_str());
+  return QString(item->node->label().c_str());
 }
 
 Qt::ItemFlags GridTreeModel::flags ( const QModelIndex &index ) const

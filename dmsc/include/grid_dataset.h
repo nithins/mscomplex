@@ -50,22 +50,25 @@ class GridMSComplex:
   typedef GridMSComplex                    mscomplex_t;
   typedef mscomplex_t::critical_point      critpt_t;
   typedef critpt_t::connection_t           conn_t;
-  typedef critpt_t::connection_t::iterator conn_iter_t;
+  typedef conn_t::iterator                 conn_iter_t;
+  typedef conn_t::const_iterator           const_conn_iter_t;
 
-  typedef boost::multi_array<cell_fn_t,2>  varray_t;
-  typedef boost::multi_array<cellid_t,2>   cellpair_array_t;
-  typedef boost::multi_array<int8_t,2>     cellflag_array_t;
-
-  rect_t  m_rect;
-  rect_t  m_ext_rect;
-
+  typedef std::vector<cell_fn_t>           cp_fn_list_t;
 public:
-  void merge_up(GridMSComplex::mscomplex_t& msc);
+
+  rect_t        m_rect;
+  rect_t        m_ext_rect;
+  cp_fn_list_t  m_cp_fns;
+
+  void clear();
+
+  static mscomplex_t * merge_up(const mscomplex_t& msc1,const mscomplex_t& msc2);
+
+  void merge_down(GridMSComplex::mscomplex_t& msc);
 
   GridMSComplex(rect_t r,rect_t e):m_rect(r),m_ext_rect(e)
   {
   }
-
 };
 
 class GridDataset:
@@ -106,7 +109,6 @@ private:
 
   rect_t           m_rect;
   rect_t           m_ext_rect;
-  mscomplex_t      m_msgraph;
 
   varray_t         m_vertex_fns; // defined on the vertices of bounding rect
   cellpair_array_t m_cell_pairs;
@@ -132,7 +134,7 @@ public:
 
   void  assignGradients();
 
-  void  computeDiscs();
+  void  computeConnectivity(mscomplex_t *msgraph);
 
   // dataset interface
 public:
@@ -169,19 +171,12 @@ public:
 
   virtual bool   isCellExterior ( cellid_t c ) const;
 
-  virtual void   connectCps ( cellid_t c1, cellid_t c2 ) ;
-
   virtual std::string  getCellFunctionDescription ( cellid_t pt ) const;
 
   virtual std::string getCellDescription ( cellid_t cellid ) const;
 
   // misc functions
 public:
-  inline mscomplex_t & get_ms_complex()
-  {
-    return m_msgraph;
-  }
-
   inline static uint s_getCellDim ( cellid_t c )
   {
     return ( ( c[0]&0x01 ) + ( c[1]&0x01 ) );
@@ -197,9 +192,10 @@ public:
     return m_ext_rect;
   }
 
+  // return fn at point .. averge of points for higher dims
   cell_fn_t get_cell_fn ( cellid_t c ) const;
 
-  // dataset renderable interface
+  // for rendering support
 public:
   void getCellCoord ( cellid_t c,double &x,double &y,double &z );
 
