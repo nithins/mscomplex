@@ -135,22 +135,24 @@ void GridDataManager::workPiece ( GridDataPiece *dp )
   dp->dataset->computeConnectivity(dp->msgraph);
 }
 
-GridDataPiece  * GridDataManager::mergePiecesUp
-    ( GridDataPiece  * dp1,GridDataPiece  *dp2)
+void mergePiecesUp
+    ( GridDataPiece  *dp,
+      GridDataPiece  *dp1,
+      GridDataPiece  *dp2)
 {
   if(dp1->level != dp2->level)
     throw std::logic_error("dps must have same level");
 
-  GridDataPiece *p = new GridDataPiece();
-
-  p->level = dp1->level+1;
-  p->msgraph = GridMSComplex::merge_up(*dp1->msgraph,*dp2->msgraph);
-  return p;
+  dp->level         = dp1->level+1;
+  dp->msgraph       = GridMSComplex::merge_up(*dp1->msgraph,*dp2->msgraph);
 }
 
-void GridDataManager::mergePiecesDown ( GridDataPiece  * dp1,GridDataPiece  *dp2)
+void mergePiecesDown
+    ( GridDataPiece  * dp,
+      GridDataPiece  * dp1,
+      GridDataPiece  * dp2)
 {
-
+  dp->msgraph->merge_down(*dp1->msgraph,*dp2->msgraph);
 }
 
 void GridDataManager::workAllPieces_mt( )
@@ -201,69 +203,126 @@ void GridDataManager::workAllPieces_st( )
 
 void GridDataManager::mergePiecesUp_mt( )
 {
+  uint num_leafs = pow(2,m_num_levels);
 
-  _LOG("Begin Merge");
-
-  for ( uint i = 1 ; i < m_pieces.size(); i*= 2)
+  for(uint i = 0;i<num_leafs-1;++i)
   {
-    boost::thread ** threads = new boost::thread*[ m_pieces.size()/(i*2) ];
+    m_pieces.push_back(new GridDataPiece);
+  }
+
+  uint p_start = 0,p_end = num_leafs;
+
+  for(uint i = m_num_levels ; i >= 1;--i)
+  {
+    boost::thread ** threads = new boost::thread*[ (p_end -p_start)/2];
 
     uint threadno = 0;
 
-    for ( uint j = 0 ; j < m_pieces.size(); j+= i*2)
+    for ( uint j = p_start ; j < p_end; j+=2)
     {
-      _LOG("Kicking off merging Up "<<j<<" "<<j+i);
+      _LOG("Kicking off Merge Up "<<j<<" "<<j+1<<"->"<<num_leafs+j/2);
 
-      GridDataPiece * dp1 = m_pieces[j];
-      GridDataPiece * dp2 = m_pieces[j+i];
-
-      threads[threadno] = new boost::thread
-                          ( boost::bind ( &GridDataManager::mergePiecesUp,this,dp1,dp2 ));
-      threadno++;
-
+      GridDataPiece *dp1 = m_pieces[j];
+      GridDataPiece *dp2 = m_pieces[j+1];
+      GridDataPiece *dp  = m_pieces[num_leafs+j/2];
+      threads[threadno++] = new boost::thread
+                          ( boost::bind ( &mergePiecesUp,dp,dp1,dp2 ));
     }
 
     threadno = 0;
 
-    for ( uint j = 0 ; j < m_pieces.size(); j+= i*2)
+    for ( uint j = p_start ; j < p_end; j+=2)
     {
       threads[threadno]->join();
-      _LOG ( "thread "<<threadno<<" joint" );
-      threadno++;
-    }
-    delete []threads;
-  }
+      _LOG ( "thread "<<threadno++<<" joint" );
 
-  _LOG("End Merge");
+    }
+    p_start = p_end;
+    p_end  += 0x01<<i-1;
+  }
 }
 
 void GridDataManager::mergePiecesUp_st( )
 {
+  // double the no of pieces
 
-  for ( uint j = 0 ; j < m_pieces.size()/2; ++j)
+  uint num_leafs = pow(2,m_num_levels);
+
+  for(uint i = 0;i<num_leafs-1;++i)
   {
-    GridDataPiece * dp1 = m_pieces[2*j];
-    GridDataPiece * dp2 = m_pieces[2*j+1];
+    m_pieces.push_back(new GridDataPiece);
+  }
 
-    _LOG("Merging Up "<<2*j<<" "<<2*j+1<<"->"<<m_pieces.size());
+  for ( uint i = 0;i<m_pieces.size()-1; i+=2)
+  {
+    GridDataPiece *dp1 = m_pieces[i];
+    GridDataPiece *dp2 = m_pieces[i+1];
+    GridDataPiece *dp  = m_pieces[num_leafs+i/2];
 
-    m_pieces.push_back(GridDataManager::mergePiecesUp(dp1,dp2));
+    _LOG(" Merge Up "<<i<<" "<<i+1<<"->"<<num_leafs+i/2);
+
+    mergePiecesUp(dp,dp1,dp2);
   }
 
 }
 
 void GridDataManager::mergePiecesDown_st()
 {
-  for ( uint i = m_pieces.size()/2 ; i >= 1 ; i/= 2)
+  uint num_nodes = (0x01<<(m_num_levels+1))-1;
+
+  for(uint i = 0 ; i < m_num_levels;++i)
   {
-    for ( int j = m_pieces.size()-i ; j >=0 ; j-= i*2)
+    uint p_start = 0x01<<i,p_end = p_start<<1;
+
+    for ( uint j = p_start ; j < p_end; j++)
     {
-      GridDataPiece * dp1 = m_pieces[j];
-      GridDataPiece * dp2 = m_pieces[j+i];
+      _LOG("Merge Down "<<
+           num_nodes - j<<"->"<<
+           num_nodes - 2*j<<" "<<
+           num_nodes - 2*j-1);
 
-      _LOG("merging Down "<<j-i<<" "<<j);
+      GridDataPiece *dp  = m_pieces[num_nodes- j];
+      GridDataPiece *dp1 = m_pieces[num_nodes- 2*j];
+      GridDataPiece *dp2 = m_pieces[num_nodes- 2*j-1];
 
-      GridDataManager::mergePiecesDown(dp1,dp2);
+      mergePiecesDown(dp,dp1,dp2);
+    }
+  }
+}
+
+void GridDataManager::mergePiecesDown_mt()
+{
+  uint num_nodes = (0x01<<(m_num_levels+1))-1;
+
+  for(uint i = 0 ; i < m_num_levels;++i)
+  {
+    uint p_start = 0x01<<i,p_end = p_start<<1;
+
+    boost::thread ** threads = new boost::thread*[p_end -p_start];
+
+    uint threadno = 0;
+
+    for ( uint j = p_start ; j < p_end; j++)
+    {
+      _LOG("Kicking off Merge Down "<<
+           num_nodes - j<<"->"<<
+           num_nodes - 2*j<<" "<<
+           num_nodes - 2*j-1);
+
+      GridDataPiece *dp  = m_pieces[num_nodes- j];
+      GridDataPiece *dp1 = m_pieces[num_nodes- 2*j];
+      GridDataPiece *dp2 = m_pieces[num_nodes- 2*j-1];
+
+      threads[threadno++] = new boost::thread
+                          ( boost::bind ( &mergePiecesDown,dp,dp1,dp2 ));
+    }
+
+    threadno = 0;
+
+    for ( uint j = p_start ; j < p_end; j++)
+    {
+      threads[threadno]->join();
+      _LOG ( "thread "<<threadno++<<" joint" );
     }
   }
 }
@@ -300,6 +359,8 @@ GridDataManager::GridDataManager
 
       mergePiecesUp_mt();
 
+      //mergePiecesDown_mt();
+
       exit(0);
     }
     else
@@ -314,15 +375,11 @@ GridDataManager::GridDataManager
 
   //  catch(std::exception &e)
   //  {
-  //    for(uint i = 0 ; i <m_pieces.size();++i)
-  //    {
-  //      std::stringstream ss;
-  //      ss<<"log/dp-"<<i;
-  //
-  //      logAllConnections(ss.str());
-  //
-  //      throw e;
-  //    }
+
+        logAllConnections("log/dp-");
+
+//        throw e;
+
   //  }
 
   _LOG ( "--------------------------" );
@@ -604,7 +661,7 @@ void  GridDataPiece::create_cp_rens()
 
   for(uint i = 0; i < msgraph->m_cps.size(); ++i)
   {
-    if(msgraph->m_cps[i]->isCancelled)
+    if(msgraph->m_cps[i]->isCancelled )
       continue;
 
     uint dim = GridDataset::s_getCellDim
@@ -627,9 +684,25 @@ void  GridDataPiece::create_cp_rens()
           (glutils::line_idx_t(cp_ren_idx,conn_cp_ren_idx));
 
     }
+  }
+
+  for(uint i = 0; i < msgraph->m_cps.size(); ++i)
+  {
+    if(msgraph->m_cps[i]->isCancelled )
+      continue;
+
+    uint dim = GridDataset::s_getCellDim
+               (msgraph->m_cps[i]->cellid);
+
+    if (dim ==0 )
+      continue;
+
+    dim--;
 
     if(!msgraph->m_cps[i]->isBoundryCancelable)
       continue;
+
+    uint cp_ren_idx = crit_ms_idx_ren_idx_map[i];
 
     for(conn_t::iterator it = msgraph->m_cps[i]->des.begin();
     it != msgraph->m_cps[i]->des.end(); ++it)

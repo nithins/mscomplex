@@ -484,7 +484,7 @@ GridMSComplex::mscomplex_t * GridMSComplex::merge_up
       const critpt_t *src_cp = msc->m_cps[j];
 
       // if it is contained or not
-      if (i == 1 && out_msc->m_id_cp_map.count (src_cp->cellid) > 0)
+      if (i == 1 && (out_msc->m_id_cp_map.count(src_cp->cellid) == 1))
         continue;
 
       if(src_cp->isCancelled)
@@ -588,6 +588,154 @@ GridMSComplex::mscomplex_t * GridMSComplex::merge_up
   return out_msc;
 }
 
+void GridMSComplex::merge_down(mscomplex_t& msc1,mscomplex_t& msc2)
+{
+  // form the intersection rect
+  rect_t ixn;
+
+  if (!msc2.m_rect.intersection (msc1.m_rect,ixn))
+    throw std::logic_error ("rects should intersect for merge");
+
+  if ( (ixn.left() != ixn.right()) && (ixn.top() != ixn.bottom()))
+    throw std::logic_error ("rects must merge along a 1 manifold");
+
+  if (ixn.bottom_left() == ixn.top_right())
+    throw std::logic_error ("rects cannot merge along a point alone");
+
+  // carry out the uncancellation
+  for(cell_coord_t y = ixn.top(); y >= ixn.bottom();--y)
+  {
+    for(cell_coord_t x = ixn.right(); x >= ixn.left();--x)
+    {
+      cellid_t c(x,y);
+
+      if(this->m_id_cp_map.count(c) != 1)
+        throw std::logic_error("missing common bndry cp");
+
+      u_int src_idx = this->m_id_cp_map[c];
+
+      critpt_t *src_cp = this->m_cps[src_idx];
+
+      if(!src_cp->isCancelled )
+        continue;
+
+      u_int pair_idx = src_cp->pair_idx;
+
+      cellid_t p = this->m_cps[pair_idx]->cellid;
+
+      if(!this->m_rect.isInInterior(c)&& !this->m_ext_rect.isOnBoundry(c))
+        continue;
+
+      if(!this->m_rect.isInInterior(p)&& !this->m_ext_rect.isOnBoundry(p))
+        continue;
+
+      uncancel_pairs(this,src_idx,pair_idx);
+    }
+  }
+
+  // identify and copy the results to msc1 and msc2
+
+  mscomplex_t* msc_arr[] = {&msc1,&msc2};
+
+  for (uint i = 0 ; i <2;++i)
+  {
+    mscomplex_t * msc = msc_arr[i];
+
+    // adjust connections for uncancelled cps in msc
+    for(uint j = 0 ; j < m_cps.size();++j)
+    {
+      critpt_t * src_cp = m_cps[j];
+
+      if(src_cp->isCancelled)
+        throw std::logic_error("all cps ought to be uncancelled by now");
+
+      if(src_cp->isBoundryCancelable &&
+         msc->m_id_cp_map.count(src_cp->cellid) == 0)
+        continue;
+
+      if(!src_cp->isBoundryCancelable)
+        continue;
+
+      if(msc->m_id_cp_map.count(src_cp->cellid) != 1)
+        throw std::logic_error("this boundry cp must be contained in msc");
+
+      critpt_t *dest_cp = msc->m_cps[msc->m_id_cp_map[src_cp->cellid]];
+
+      conn_t *src_acdc[] = {&src_cp->asc,&src_cp->des};
+      conn_t *dest_acdc[] = {&dest_cp->asc,&dest_cp->des};
+
+      for(uint k = 0 ; k < 2;++k)
+      {
+        dest_acdc[k]->clear();
+
+        for(conn_iter_t it = src_acdc[k]->begin(); it!=src_acdc[k]->end();++it)
+        {
+          critpt_t *src_conn_cp = m_cps[*it];
+
+          if(src_conn_cp->isBoundryCancelable == true)
+            throw std::logic_error("only non cancellable cps must be remaining");
+
+          if(msc->m_id_cp_map.count(src_conn_cp->cellid) == 0)
+          {
+            critpt_t* dest_conn_cp = new critpt_t;
+
+            // copy over the trivial data
+            dest_conn_cp->isCancelled           = src_conn_cp->isCancelled;
+            dest_conn_cp->isBoundryCancelable   = src_conn_cp->isBoundryCancelable;
+            dest_conn_cp->isOnStrangulationPath = src_conn_cp->isOnStrangulationPath;
+            dest_conn_cp->cellid                = src_conn_cp->cellid;
+
+            msc->m_id_cp_map[dest_conn_cp->cellid] = msc->m_cps.size();
+            msc->m_cps.push_back(dest_conn_cp);
+            msc->m_cp_fns.push_back(m_cp_fns[*it]);
+          }
+
+          dest_acdc[k]->insert(msc->m_id_cp_map[src_conn_cp->cellid]);
+        }// end it
+      }// end k
+    }// end j
+
+    // adjust connections for non uncancelled cps in msc
+    for(uint j = 0 ; j < m_cps.size();++j)
+    {
+      critpt_t * src_cp = m_cps[j];
+
+      if(src_cp->isBoundryCancelable)
+        continue;
+
+      if(msc->m_id_cp_map.count(src_cp->cellid) != 1)
+        continue;
+
+      critpt_t *dest_cp = msc->m_cps[msc->m_id_cp_map[src_cp->cellid]];
+
+      conn_t *src_acdc[] = {&src_cp->asc,&src_cp->des};
+      conn_t *dest_acdc[] = {&dest_cp->asc,&dest_cp->des};
+
+      for(uint k = 0 ; k < 2;++k)
+      {
+        dest_acdc[k]->clear();
+
+        for(conn_iter_t it = src_acdc[k]->begin(); it!=src_acdc[k]->end();++it)
+        {
+          critpt_t *src_conn_cp = m_cps[*it];
+
+          if(src_conn_cp->isBoundryCancelable == true)
+          {
+            _LOG("appears that "<<src_conn_cp->cellid<<"is still connected to"<<
+                 src_cp->cellid);
+            //throw std::logic_error("only non cancellable cps must be remaining 1");
+          }
+
+          if(msc->m_id_cp_map.count(src_conn_cp->cellid) == 0)
+            continue;
+
+          dest_acdc[k]->insert(msc->m_id_cp_map[src_conn_cp->cellid]);
+        }// end it
+      }// end k
+    }// end j
+  }//end i
+}
+
 void GridMSComplex::clear()
 {
   std::for_each(m_cps.begin(),m_cps.end(),&delete_ftor<critpt_t>);
@@ -595,7 +743,4 @@ void GridMSComplex::clear()
   m_id_cp_map.clear();
 }
 
-void GridMSComplex::merge_down(GridMSComplex::mscomplex_t& msc)
-{
 
-}

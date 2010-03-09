@@ -49,9 +49,9 @@ class GridMSComplex:
 
   typedef GridMSComplex                    mscomplex_t;
   typedef mscomplex_t::critical_point      critpt_t;
-  typedef critpt_t::connection_t           conn_t;
-  typedef conn_t::iterator                 conn_iter_t;
-  typedef conn_t::const_iterator           const_conn_iter_t;
+  typedef mscomplex_t::critical_point::connection_t                 conn_t;
+  typedef mscomplex_t::critical_point::connection_t::iterator       conn_iter_t;
+  typedef mscomplex_t::critical_point::connection_t::const_iterator const_conn_iter_t;
 
   typedef std::vector<cell_fn_t>           cp_fn_list_t;
 public:
@@ -64,7 +64,7 @@ public:
 
   static mscomplex_t * merge_up(const mscomplex_t& msc1,const mscomplex_t& msc2);
 
-  void merge_down(GridMSComplex::mscomplex_t& msc);
+  void merge_down(mscomplex_t& msc1,mscomplex_t& msc2);
 
   GridMSComplex(rect_t r,rect_t e):m_rect(r),m_ext_rect(e)
   {

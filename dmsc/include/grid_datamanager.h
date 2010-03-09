@@ -89,10 +89,11 @@ class GridDataManager:
   typedef GridDataset::cellid_t cellid_t;
   typedef GridDataset::rect_point_t rect_point_t;
   typedef GridDataset::rect_size_t rect_size_t;
+  typedef std::vector<GridDataPiece *> pieces_list_t;
 
 public:
 
-  std::vector<GridDataPiece *> m_pieces;
+  pieces_list_t                m_pieces;
 
   bool                         m_bShowCriticalPointLabels;
   std::string                  m_filename;
@@ -125,10 +126,6 @@ public:
   void initDataPieceForRender ( GridDataPiece  *dp );
 
   void workPiece ( GridDataPiece  * );
-
-  GridDataPiece  * mergePiecesUp ( GridDataPiece  * ,GridDataPiece  *);
-
-  void mergePiecesDown ( GridDataPiece  * ,GridDataPiece  *);
 
   void workAllPieces_mt( );
 

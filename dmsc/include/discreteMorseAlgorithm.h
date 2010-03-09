@@ -889,6 +889,91 @@ template <typename id_t>
 }
 
 template <typename id_t>
+    void uncancel_pairs
+    ( MSComplex<id_t>  *msc,
+      uint cp1_idx,
+      uint cp2_idx)
+{
+
+  typedef typename MSComplex<id_t>::critical_point critical_point_t;
+  typedef typename MSComplex<id_t>::critical_point::connection_t connection_t;
+  typedef typename connection_t::iterator connection_iter_t;
+  typedef typename MSComplex<id_t>::id_cp_map_t id_cp_map_t;
+  typedef typename MSComplex<id_t>::cp_ptr_list_t cp_ptr_list_t;
+  typedef typename std::pair<id_t,id_t> cancel_pair_t;
+  typedef typename std::vector<cancel_pair_t> cancel_pair_list_t;
+
+  if( msc->m_cps[cp1_idx]->asc.find ( cp2_idx ) ==
+      msc->m_cps[cp1_idx]->asc.end() )
+  {
+    std::swap ( cp1_idx,cp2_idx );
+  }
+
+  connection_t * acdc_conns[] =
+  {&msc->m_cps[cp1_idx]->asc,
+   &msc->m_cps[cp2_idx]->des};
+
+  uint * cp_idxs[]= {&cp1_idx,&cp2_idx};
+
+
+  for(uint i = 0 ;i < 2 ; ++i)
+  {
+
+    if( acdc_conns[i]->find ( *cp_idxs[(i+1)%2] ) ==
+        acdc_conns[i]->end())
+    {
+      throw std::logic_error("cancellable pair is not connected");
+    }
+
+    connection_t new_acdc;
+
+    for(connection_iter_t acdc_conn_it = acdc_conns[i]->begin();
+        acdc_conn_it != acdc_conns[i]->end();++acdc_conn_it)
+    {
+      if(*acdc_conn_it == *cp_idxs[(i+1)%2])
+        continue;
+
+      if(msc->m_cps[*acdc_conn_it]->isBoundryCancelable == false)
+      {
+        new_acdc.insert(*acdc_conn_it);
+        continue;
+      }
+
+      if(msc->m_cps[*acdc_conn_it]->isCancelled == true)
+        throw std::logic_error("*acdc_conn_it should not have been cancelled yet");
+
+
+      uint conn_cp_pair_idx = msc->m_cps[*acdc_conn_it]->pair_idx;
+
+      if(msc->m_cps[conn_cp_pair_idx]->pair_idx != *acdc_conn_it)
+        throw std::logic_error("*acdc_conn_it and its pair dont agree on pairing");
+
+      connection_t * conn_cp_acdc_conns[] =
+      {&msc->m_cps[conn_cp_pair_idx]->asc,
+       &msc->m_cps[conn_cp_pair_idx]->des};
+
+      for(connection_iter_t conn_cp_acdc_conn_it =
+          conn_cp_acdc_conns[i]->begin();
+      conn_cp_acdc_conn_it != conn_cp_acdc_conns[i]->end();
+      ++conn_cp_acdc_conn_it)
+      {
+        if(msc->m_cps[*conn_cp_acdc_conn_it]->isBoundryCancelable == true)
+          throw std::logic_error("the connected cancelable cp shold not "\
+                                 " contain a cancelable cp in its connections");
+
+        new_acdc.insert(*conn_cp_acdc_conn_it);
+      }
+    }
+
+    acdc_conns[i]->clear();
+    acdc_conns[i]->insert(new_acdc.begin(),new_acdc.end());
+  }
+
+  msc->m_cps[cp1_idx]->isCancelled = false;
+  msc->m_cps[cp2_idx]->isCancelled = false;
+}
+
+template <typename id_t>
   void form_cancel_pairs_map
   ( const std::vector<std::pair<id_t,id_t> > &cancel_pairs,
     std::map<id_t,id_t> &cancel_pair_map)
@@ -1063,12 +1148,12 @@ template <typename id_t>
 void print_connections
 (std::ostream & os,
  const MSComplex<id_t> &msc,
- const typename MSComplex<id_t>::critical_point::connection_t &conn 
- ) 
+ const typename MSComplex<id_t>::critical_point::connection_t &conn
+ )
 {
   typedef typename MSComplex<id_t>::critical_point::connection_t connection_t;
   typedef typename connection_t::iterator conn_iter_t;
-  
+
   os<<"{ ";
   for(conn_iter_t it = conn.begin(); it != conn.end(); ++it)
   {
@@ -1082,7 +1167,7 @@ void print_connections
 
 template <typename id_t>
 void print_connections
-(std::ostream & os,const MSComplex<id_t> &msc) 
+(std::ostream & os,const MSComplex<id_t> &msc)
 {
   for(uint i = 0 ; i < msc.m_cps.size();++i)
   {
