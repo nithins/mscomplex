@@ -93,7 +93,6 @@ void GridDataManager::readFile ( )
   u_int dp_idx = 0;
 
   fstream infile ( m_filename.c_str(),fstream::in|fstream::binary );
-
   for ( uint y = 0 ; y <m_size_y;y++ )
     for ( uint x = 0 ; x < m_size_x;x++ )
     {
@@ -107,7 +106,9 @@ void GridDataManager::readFile ( )
     cellid_t p(2*x,2*y);
 
     if(!m_pieces[dp_idx]->dataset->get_ext_rect().contains(p))
+    {
       ++dp_idx;
+    }
 
     m_pieces[dp_idx]->dataset->set_cell_fn(p,data);
 
@@ -359,7 +360,7 @@ GridDataManager::GridDataManager
 
       mergePiecesUp_mt();
 
-      //mergePiecesDown_mt();
+      mergePiecesDown_mt();
 
       exit(0);
     }
@@ -376,9 +377,9 @@ GridDataManager::GridDataManager
   //  catch(std::exception &e)
   //  {
 
-        logAllConnections("log/dp-");
+        //logAllConnections("log/dp-");
 
-//        throw e;
+//        throw;
 
   //  }
 
@@ -691,6 +692,9 @@ void  GridDataPiece::create_cp_rens()
     if(msgraph->m_cps[i]->isCancelled )
       continue;
 
+    if(!msgraph->m_cps[i]->isBoundryCancelable)
+      continue;
+
     uint dim = GridDataset::s_getCellDim
                (msgraph->m_cps[i]->cellid);
 
@@ -698,9 +702,6 @@ void  GridDataPiece::create_cp_rens()
       continue;
 
     dim--;
-
-    if(!msgraph->m_cps[i]->isBoundryCancelable)
-      continue;
 
     uint cp_ren_idx = crit_ms_idx_ren_idx_map[i];
 

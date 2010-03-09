@@ -53,7 +53,7 @@
 #define DEBUG_LOG_VV(x) DEBUG_STMT_VV(_LOG(x))
 
 template <typename id_type>
-    bool compareCells ( IDiscreteDataset<id_type> *dataset,id_type cellid1,id_type cellid2 )
+    bool compareCells_gen ( const IDiscreteDataset<id_type> *dataset,id_type cellid1,id_type cellid2 )
 {
   id_type id_typearr[20];
 
@@ -83,6 +83,8 @@ template <typename id_type>
 
   uint cofacet_count = dataset->getCellCofacets ( cellId,cofacets );
 
+  bool isTrueBoundryCell = dataset->isTrueBoundryCell ( cellId ) ;
+
   // for each co facet
   for ( uint i = 0 ; i < cofacet_count ; i++ )
   {
@@ -91,7 +93,8 @@ template <typename id_type>
 
     cofacet_usable[i] = true;
 
-    if ( dataset->isTrueBoundryCell ( cellId ) && !dataset->isTrueBoundryCell ( cofacets[i] ) )
+    if ( isTrueBoundryCell &&
+         !dataset->isTrueBoundryCell ( cofacets[i] ) )
     {
       cofacet_usable[i] = false;
       continue;
@@ -99,8 +102,7 @@ template <typename id_type>
 
     for ( uint j = 0 ; j < facet_count ; j++ )
     {
-      if ( compareCells ( dataset,cellId,facets[j] ) &&
-           compareCells ( dataset,facets[j],cofacets[i] ) )
+      if ( dataset->compareCells ( cellId,facets[j] ) )
       {
         cofacet_usable[i] = false;
         break;
@@ -122,7 +124,7 @@ template <typename id_type>
       continue;
     }
 
-    if ( compareCells ( dataset,cofacets[i],pairid ) )
+    if ( dataset->compareCells ( cofacets[i],pairid ) )
       pairid = cofacets[i];
 
   }
@@ -243,7 +245,6 @@ template <typename id_t,typename cpiter_t>
     void addCriticalPointsToMSComplex
     (
         MSComplex<id_t> *msc,
-        IDiscreteDataset<id_t> *ds,
         cpiter_t begin,
         cpiter_t end
         )
@@ -260,15 +261,8 @@ template <typename id_t,typename cpiter_t>
     cp_t * cp                 = new cp_t;
     msc->m_cps[pos]           = cp;
     cp->cellid                = *it;
+    msc->m_id_cp_map.insert ( std::make_pair ( *it,pos ) );
 
-    if ( ds->isCellCritical ( *it ) )
-    {
-      msc->m_id_cp_map.insert ( std::make_pair ( *it,pos ) );
-    }
-    else
-    {
-      _LOG("Something stinks");
-    }
     ++pos;
   }
 }
@@ -495,7 +489,7 @@ template <typename id_t>
     for ( uint i = 0 ; i < num_vert;i++ )
       sorted_verts[i] = i;
 
-    std::sort ( sorted_verts,sorted_verts+num_vert,bind ( compareCells<id_t>,ds,bind ( getCpCellid,msc,_1 ),bind ( getCpCellid,msc,_2 ) ) );
+    std::sort ( sorted_verts,sorted_verts+num_vert,bind ( compareCells_gen<id_t>,ds,bind ( getCpCellid,msc,_1 ),bind ( getCpCellid,msc,_2 ) ) );
 
     uint *vert_pos = new uint[num_vert];
 

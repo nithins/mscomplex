@@ -132,6 +132,8 @@ class QuadDataset:public IDiscreteDataset_renderable<uint,double>
 
     virtual bool   ptLt ( uint cellid1,uint cellid2 ) const;
 
+    virtual bool   compareCells( uint c1,uint c2) const;
+
     virtual uint   getCellPoints ( uint cellid,uint  *points ) const;
 
     virtual uint   getCellFacets ( uint cellid,uint *facets ) const;

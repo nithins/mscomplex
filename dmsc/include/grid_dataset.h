@@ -32,6 +32,7 @@
 #include <boost/multi_array.hpp>
 
 
+
 class GridMSComplex:
     public MSComplex<rectangle_complex<short int>::point_def>
 {
@@ -71,8 +72,8 @@ public:
   }
 };
 
-class GridDataset:
-    public IDiscreteDataset<rectangle_complex<short int>::point_def>
+class GridDataset/*:
+    public IDiscreteDataset<rectangle_complex<short int>::point_def>*/
 {
 
 
@@ -107,6 +108,19 @@ public:
 
 private:
 
+  class pt_comp_t
+  {
+    GridDataset *pOwn;
+  public:
+    pt_comp_t(GridDataset *o):pOwn(o){}
+
+    bool operator()(cellid_t c1,cellid_t c2)
+    {
+      return pOwn->ptLt(c1,c2);
+    }
+  };
+
+
   rect_t           m_rect;
   rect_t           m_ext_rect;
 
@@ -115,7 +129,7 @@ private:
   cellflag_array_t m_cell_flags;
   cellid_list_t    m_critical_cells;
 
-
+  pt_comp_t        m_ptcomp;
 
 public:
 
@@ -139,41 +153,52 @@ public:
   // dataset interface
 public:
 
-  virtual cellid_t   getCellPairId ( cellid_t ) const;
+  cellid_t   getCellPairId ( cellid_t ) const;
 
-  virtual bool   ptLt ( cellid_t ,cellid_t ) const;
+  inline bool   ptLt ( cellid_t c1,cellid_t c2) const
+  {
+    double f1 = m_vertex_fns[c1[0]>>1][c1[1]>>1];
+    double f2 = m_vertex_fns[c2[0]>>1][c2[1]>>1];
 
-  virtual uint   getCellPoints ( cellid_t ,cellid_t  * ) const;
+    if (f1 != f2)
+      return f1 < f2;
 
-  virtual uint   getCellFacets ( cellid_t ,cellid_t * ) const;
+    return c1<c2;
+  }
 
-  virtual uint   getCellCofacets ( cellid_t ,cellid_t * ) const;
+  bool   compareCells( cellid_t ,cellid_t ) const;
 
-  virtual bool   isPairOrientationCorrect ( cellid_t c, cellid_t p ) const;
+  uint   getCellPoints ( cellid_t ,cellid_t  * ) const;
 
-  virtual bool   isCellMarked ( cellid_t c ) const;
+  uint   getCellFacets ( cellid_t ,cellid_t * ) const;
 
-  virtual bool   isCellCritical ( cellid_t c ) const;
+  uint   getCellCofacets ( cellid_t ,cellid_t * ) const;
 
-  virtual bool   isCellPaired ( cellid_t c ) const;
+  bool   isPairOrientationCorrect ( cellid_t c, cellid_t p ) const;
 
-  virtual void   pairCells ( cellid_t c,cellid_t p );
+  bool   isCellMarked ( cellid_t c ) const;
 
-  virtual void   markCellCritical ( cellid_t c );
+  bool   isCellCritical ( cellid_t c ) const;
 
-  inline virtual uint getCellDim ( cellid_t c ) const;
+  bool   isCellPaired ( cellid_t c ) const;
 
-  virtual uint   getMaxCellDim() const;
+  void   pairCells ( cellid_t c,cellid_t p );
 
-  virtual bool   isTrueBoundryCell ( cellid_t c ) const;
+  void   markCellCritical ( cellid_t c );
 
-  virtual bool   isFakeBoundryCell ( cellid_t c ) const;
+  inline uint getCellDim ( cellid_t c ) const;
 
-  virtual bool   isCellExterior ( cellid_t c ) const;
+  uint   getMaxCellDim() const;
 
-  virtual std::string  getCellFunctionDescription ( cellid_t pt ) const;
+  bool   isTrueBoundryCell ( cellid_t c ) const;
 
-  virtual std::string getCellDescription ( cellid_t cellid ) const;
+  bool   isFakeBoundryCell ( cellid_t c ) const;
+
+  bool   isCellExterior ( cellid_t c ) const;
+
+  std::string  getCellFunctionDescription ( cellid_t pt ) const;
+
+  std::string getCellDescription ( cellid_t cellid ) const;
 
   // misc functions
 public:

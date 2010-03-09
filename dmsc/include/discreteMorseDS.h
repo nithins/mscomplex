@@ -39,6 +39,8 @@ public:
 
   virtual bool    ptLt ( id_type cell1,id_type cell2 ) const =0;
 
+  virtual bool    compareCells( id_type ,id_type ) const = 0;
+
   virtual uint    getCellPoints ( id_type cellId,id_type  *points ) const =0;
 
   virtual uint    getCellFacets ( id_type cellId,id_type *facets ) const =0;
@@ -78,10 +80,10 @@ template <typename id_t>
 {
 
 public:
-  
+
   struct critical_point;
 
-  typedef std::map<id_t,uint>           id_cp_map_t;  
+  typedef std::map<id_t,uint>           id_cp_map_t;
   typedef std::vector<critical_point *> cp_ptr_list_t;
 
 
@@ -89,7 +91,7 @@ public:
   {
     typedef std::multiset<uint> connection_t;
 
-    id_t cellid;    
+    id_t cellid;
 
     u_int pair_idx;
 
@@ -104,7 +106,7 @@ public:
       isBoundryCancelable   = false;
       pair_idx              = (u_int) -1;
     }
-    
+
 
     std::set<id_t> asc_disc;
     std::set<id_t> des_disc;
@@ -112,7 +114,7 @@ public:
     connection_t asc;
     connection_t des;
   };
-  
+
   cp_ptr_list_t m_cps;
   id_cp_map_t   m_id_cp_map;
 

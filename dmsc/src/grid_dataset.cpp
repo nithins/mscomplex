@@ -6,8 +6,155 @@
 
 typedef GridDataset::cellid_t cellid_t;
 
+void connectCps (GridDataset::mscomplex_t *msgraph,
+                 GridDataset::cellid_t c1,
+                 GridDataset::cellid_t c2)
+{
+  if (GridDataset::s_getCellDim (c1) <GridDataset::s_getCellDim (c2))
+    std::swap (c1,c2);
+
+  if (GridDataset::s_getCellDim (c1) != GridDataset::s_getCellDim (c2) +1)
+    throw std::logic_error ("must connect i,i+1 cp (or vice versa)");
+
+  if (msgraph->m_id_cp_map.find (c1) == msgraph->m_id_cp_map.end())
+    throw std::logic_error (_SSTR ("cell not in id_cp_map c1="<<c1));
+
+  if (msgraph->m_id_cp_map.find (c2) == msgraph->m_id_cp_map.end())
+    throw std::logic_error (_SSTR ("cell not in id_cp_map c2="<<c2));
+
+  uint cp1_ind = msgraph->m_id_cp_map[c1];
+
+  uint cp2_ind = msgraph->m_id_cp_map[c2];
+
+  GridDataset::critpt_t *cp1 = msgraph->m_cps[cp1_ind];
+
+  GridDataset::critpt_t *cp2 = msgraph->m_cps[cp2_ind];
+
+  cp1->des.insert (cp2_ind);
+
+  cp2->asc.insert (cp1_ind);
+}
+
+inline bool lowestPairableCoFacet
+    (GridDataset *dataset,
+     GridDataset::cellid_t cellId,
+     GridDataset::cellid_t& pairid
+     )
+{
+  typedef GridDataset::cellid_t id_type;
+
+  id_type cofacets[20];
+  bool    cofacet_usable[20];
+
+  uint cofacet_count = dataset->getCellCofacets ( cellId,cofacets );
+
+  bool isTrueBoundryCell = dataset->isTrueBoundryCell ( cellId ) ;
+
+  // for each co facet
+  for ( uint i = 0 ; i < cofacet_count ; i++ )
+  {
+    id_type facets[20];
+    uint facet_count = dataset->getCellFacets ( cofacets[i],facets );
+
+    cofacet_usable[i] = true;
+
+    if ( isTrueBoundryCell &&
+         !dataset->isTrueBoundryCell ( cofacets[i] ) )
+    {
+      cofacet_usable[i] = false;
+      continue;
+    }
+
+    for ( uint j = 0 ; j < facet_count ; j++ )
+    {
+      if ( dataset->compareCells ( cellId,facets[j] ))
+      {
+        cofacet_usable[i] = false;
+        break;
+      }
+    }
+  }
+
+  bool pairid_usable = false;
+
+  for ( uint i =0 ; i < cofacet_count;i++ )
+  {
+    if ( cofacet_usable[i] == false )
+      continue;
+
+    if(pairid_usable == false)
+    {
+      pairid_usable = true;
+      pairid = cofacets[i];
+      continue;
+    }
+
+    if ( dataset->compareCells ( cofacets[i],pairid ) )
+      pairid = cofacets[i];
+
+  }
+  return pairid_usable;
+}
+
+
+void track_gradient_tree_bfs
+    (GridDataset *dataset,
+     GridDataset::mscomplex_t *msgraph,
+     GridDataset::cellid_t start_cellId,
+     eGradDirection gradient_dir
+     )
+{
+  typedef GridDataset::cellid_t id_type;
+
+  static uint ( GridDataset::*getcets[2] ) ( id_type,id_type * ) const =
+  {
+    &GridDataset::getCellFacets,
+    &GridDataset::getCellCofacets
+  };
+
+  std::queue<id_type> cell_queue;
+
+  // mark here that that cellid has no parent.
+
+  cell_queue.push ( start_cellId );
+
+  while ( !cell_queue.empty() )
+  {
+    id_type top_cell = cell_queue.front();
+
+    cell_queue.pop();
+
+    id_type      cets[20];
+
+    uint cet_ct = ( dataset->*getcets[gradient_dir] ) ( top_cell,cets );
+
+    for ( uint i = 0 ; i < cet_ct ; i++ )
+    {
+      if ( dataset->isCellCritical ( cets[i] ) )
+      {
+        connectCps(msgraph,start_cellId,cets[i]);
+      }
+      else
+      {
+        if ( !dataset->isCellExterior ( cets[i] ) )
+        {
+          id_type next_cell = dataset->getCellPairId ( cets[i] );
+
+          if ( dataset->getCellDim ( top_cell ) ==
+               dataset->getCellDim ( next_cell ) &&
+               next_cell != top_cell )
+          {
+            // mark here that the parent of next cell is top_cell
+            cell_queue.push ( next_cell );
+          }
+        }
+      }
+    }
+  }
+}
+
 GridDataset::GridDataset (const rect_t &r,const rect_t &e) :
-    m_rect (r),m_ext_rect (e)
+    m_rect (r),m_ext_rect (e),m_ptcomp(this)
 {
 
   // TODO: assert that the given rect is of even size..
@@ -51,19 +198,25 @@ GridDataset::cellid_t   GridDataset::getCellPairId (cellid_t c) const
     throw std::logic_error ("invalid pair requested");
 
   return m_cell_pairs (c);
-
 }
 
-bool GridDataset::ptLt (cellid_t c1,cellid_t c2) const
+bool GridDataset::compareCells( cellid_t c1,cellid_t  c2 ) const
 {
-  double f1 = m_vertex_fns[c1[0]>>1][c1[1]>>1];
-  double f2 = m_vertex_fns[c2[0]>>1][c2[1]>>1];
+  if(getCellDim(c1) == 0)
+    return ptLt(c1,c2);
 
-  if (f1 != f2)
-    return f1 < f2;
+  cellid_t pts1[20];
+  cellid_t pts2[20];
 
-  return c1<c2;
+  uint pts1_ct = getCellPoints ( c1,pts1);
+  uint pts2_ct = getCellPoints ( c2,pts2);
 
+  std::sort ( pts1,pts1+pts1_ct,m_ptcomp );
+  std::sort ( pts2,pts2+pts2_ct,m_ptcomp);
+
+  return std::lexicographical_compare
+      ( pts1,pts1+pts1_ct,pts2,pts2+pts2_ct,
+        m_ptcomp );
 }
 
 GridDataset::cell_fn_t GridDataset::get_cell_fn (cellid_t c) const
@@ -245,35 +398,6 @@ bool GridDataset::isCellExterior (cellid_t c) const
   return (!m_rect.contains (c) && m_ext_rect.contains (c));
 }
 
-void connectCps (GridDataset::mscomplex_t *msgraph,
-                 GridDataset::cellid_t c1,
-                 GridDataset::cellid_t c2)
-{
-  if (GridDataset::s_getCellDim (c1) <GridDataset::s_getCellDim (c2))
-    std::swap (c1,c2);
-
-  if (GridDataset::s_getCellDim (c1) != GridDataset::s_getCellDim (c2) +1)
-    throw std::logic_error ("must connect i,i+1 cp (or vice versa)");
-
-  if (msgraph->m_id_cp_map.find (c1) == msgraph->m_id_cp_map.end())
-    throw std::logic_error (_SSTR ("cell not in id_cp_map c1="<<c1));
-
-  if (msgraph->m_id_cp_map.find (c2) == msgraph->m_id_cp_map.end())
-    throw std::logic_error (_SSTR ("cell not in id_cp_map c2="<<c2));
-
-  uint cp1_ind = msgraph->m_id_cp_map[c1];
-
-  uint cp2_ind = msgraph->m_id_cp_map[c2];
-
-  GridDataset::critpt_t *cp1 = msgraph->m_cps[cp1_ind];
-
-  GridDataset::critpt_t *cp2 = msgraph->m_cps[cp2_ind];
-
-  cp1->des.insert (cp2_ind);
-
-  cp2->asc.insert (cp1_ind);
-}
-
 std::string GridDataset::getCellFunctionDescription (cellid_t c) const
 {
   std::stringstream ss;
@@ -306,7 +430,7 @@ void  GridDataset::assignGradients()
     if (isCellMarked (c))
       continue;
 
-    if (minPairable_cf (this,c,p))
+    if (lowestPairableCoFacet (this,c,p))
       pairCells (c,p);
   }
 
@@ -383,7 +507,7 @@ void  GridDataset::computeConnectivity(mscomplex_t *msgraph)
 {
 
   addCriticalPointsToMSComplex
-      (msgraph,this,m_critical_cells.begin(),m_critical_cells.end());
+      (msgraph,m_critical_cells.begin(),m_critical_cells.end());
 
   msgraph->m_cp_fns.resize(m_critical_cells.size());
 
@@ -394,16 +518,10 @@ void  GridDataset::computeConnectivity(mscomplex_t *msgraph)
     switch (getCellDim (*it))
     {
     case 0:
-      track_gradient_tree_bfs
-          (this,*it,GRADIENT_DIR_UPWARD,
-           add_to_grad_tree_proxy,
-           boost::bind (&connectCps,msgraph,*it,_1));
+      track_gradient_tree_bfs(this,msgraph,*it,GRADIENT_DIR_UPWARD);
       break;
     case 2:
-      track_gradient_tree_bfs
-          (this,*it,GRADIENT_DIR_DOWNWARD,
-           add_to_grad_tree_proxy,
-           boost::bind (&connectCps,msgraph,*it,_1));
+      track_gradient_tree_bfs(this,msgraph,*it,GRADIENT_DIR_DOWNWARD);
       break;
     default:
       break;
@@ -537,7 +655,7 @@ GridMSComplex::mscomplex_t * GridMSComplex::merge_up
       for (uint j = 0 ; j < 2; ++j)
       {
         for (const_conn_iter_t it = acdc_src[j]->begin();
-              it != acdc_src[j]->end();++it)
+        it != acdc_src[j]->end();++it)
         {
           const critpt_t *conn_cp = msc->m_cps[*it];
 

@@ -171,7 +171,7 @@ void QuadDataset::addCpConnection ( uint src,uint dest )
 
 void QuadDataset::computeDiscs()
 {
-  addCriticalPointsToMSComplex ( &m_mscomplex,this,m_criticalpoints.begin(),m_criticalpoints.end() );
+  addCriticalPointsToMSComplex ( &m_mscomplex,m_criticalpoints.begin(),m_criticalpoints.end() );
 
   for ( uint i = 0 ; i < m_criticalpoints.size();i++ )
   {
@@ -442,6 +442,10 @@ bool QuadDataset::ptLt ( uint cellid1,uint cellid2 ) const
   else
     return m_orig_vert_index[cellid1]< m_orig_vert_index[cellid2];
 
+}
+bool QuadDataset::compareCells( uint c1,uint c2) const
+{
+  return compareCells_gen(this,c1,c2);
 }
 
 uint QuadDataset::getCellPoints ( uint cellid,uint  *points ) const
