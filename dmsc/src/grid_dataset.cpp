@@ -78,7 +78,7 @@ void GridDataset::stop_opencl()
 #define _GET_GLOBAL(s,l)\
 (((s)/(2*(l)))*(2*(l)) + ((((s)%(2*(l))) == 0)?(0):(2*l)))
 
-void GridDataset::assignGradients_ocl()
+    void GridDataset::assignGradients_ocl()
 {
 
 
@@ -106,13 +106,17 @@ void GridDataset::assignGradients_ocl()
 
   // Create the input and output arrays in device memory for our calculation
   //
-  cl_mem vert_fns_cl = clCreateBuffer(s_context,  CL_MEM_READ_ONLY,
-                               sizeof(cell_fn_t) * num_verts, NULL, NULL);
+  cl_mem vert_fns_cl   = clCreateBuffer(s_context,  CL_MEM_READ_ONLY,
+                                        sizeof(cell_fn_t) * num_verts, NULL, NULL);
 
-  cl_mem vert_pairs_cl = clCreateBuffer(s_context, CL_MEM_WRITE_ONLY,
-                                 sizeof(cellid_t) * num_cells, NULL, NULL);
+  cl_mem cell_pairs_cl = clCreateBuffer(s_context, CL_MEM_WRITE_ONLY,
+                                        sizeof(cellid_t) * num_cells, NULL, NULL);
 
-  if (!vert_fns_cl || !vert_pairs_cl)
+  cl_mem cell_flags_cl = clCreateBuffer(s_context, CL_MEM_WRITE_ONLY,
+                                        sizeof(cell_flag_t) * num_cells, NULL, NULL);
+
+
+  if (!vert_fns_cl || !cell_pairs_cl)
     throw std::runtime_error("Error: Failed to allocate device memory!\n");
 
 
@@ -120,18 +124,29 @@ void GridDataset::assignGradients_ocl()
   //
   error_code = clEnqueueWriteBuffer
                (commands, vert_fns_cl, CL_TRUE, 0, sizeof(cell_fn_t)* num_verts,
-               m_vertex_fns.data(), 0, NULL, NULL);
+                m_vertex_fns.data(), 0, NULL, NULL);
 
   if (error_code != CL_SUCCESS)
     std::runtime_error("Error: Failed to write to source array!\n");
+
+
+  cell_coord_t x_min = m_ext_rect.left()  ,x_max = m_ext_rect.right();
+  cell_coord_t y_min = m_ext_rect.bottom(),y_max = m_ext_rect.top();
+
+  _LOG_VAR(x_min<<","<<x_max);
+  _LOG_VAR(y_min<<","<<y_max);
 
 
   // Set the arguments to our compute kernel
   //
   error_code = 0;
   error_code  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &vert_fns_cl);
-  error_code |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &vert_pairs_cl);
-  error_code |= clSetKernelArg(kernel, 2, sizeof(unsigned int), &num_cells);
+  error_code |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &cell_pairs_cl);
+  error_code |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &cell_flags_cl);
+  error_code |= clSetKernelArg(kernel, 3, sizeof(cell_coord_t), &x_min);
+  error_code |= clSetKernelArg(kernel, 4, sizeof(cell_coord_t), &x_max);
+  error_code |= clSetKernelArg(kernel, 5, sizeof(cell_coord_t), &y_min);
+  error_code |= clSetKernelArg(kernel, 6, sizeof(cell_coord_t), &y_max);
 
   if (error_code != CL_SUCCESS)
     std::runtime_error("Error: Failed to set kernel arguments! \n");
@@ -139,7 +154,7 @@ void GridDataset::assignGradients_ocl()
 
   // Get the maximum work group size for executing the kernel on the device
   //
-  size_t local[] = {8,8};
+  size_t local[] = {16,16};
 
   // Execute the kernel over the entire range of our 1d input data set
   // using the maximum number of work group items for this device
@@ -153,7 +168,9 @@ void GridDataset::assignGradients_ocl()
   _LOG_VAR(global[0]);
   _LOG_VAR(global[1]);
 
-  error_code = clEnqueueNDRangeKernel(commands, kernel, 2, NULL, global, local, 0, NULL, NULL);
+  error_code = clEnqueueNDRangeKernel(commands, kernel, 2, NULL,
+                                      global, local, 0, NULL, NULL);
+
   if (error_code)
     std::runtime_error("Error: Failed to execute kernel!\n");
 
@@ -165,16 +182,20 @@ void GridDataset::assignGradients_ocl()
   // Read back the results from the device to verify the output
   //
 
-  error_code = clEnqueueReadBuffer
-               ( commands, vert_pairs_cl, CL_TRUE, 0,
-                 sizeof(cellid_t) * num_cells, m_cell_pairs.data(), 0, NULL, NULL );
+  error_code = clEnqueueReadBuffer( commands, cell_pairs_cl, CL_TRUE, 0,
+                                    sizeof(cellid_t) * num_cells,
+                                    m_cell_pairs.data(), 0, NULL, NULL );
+
+  error_code = clEnqueueReadBuffer( commands, cell_flags_cl, CL_TRUE, 0,
+                                    sizeof(cell_flag_t) * num_cells,
+                                    m_cell_flags.data(), 0, NULL, NULL );
 
   if (error_code != CL_SUCCESS)
     std::runtime_error("Error: Failed to read output array! \n");
 
 
   clReleaseMemObject(vert_fns_cl);
-  clReleaseMemObject(vert_pairs_cl);
+  clReleaseMemObject(cell_pairs_cl);
   clReleaseKernel(kernel);
   clReleaseCommandQueue(commands);
 
@@ -186,7 +207,8 @@ void GridDataset::assignGradients_ocl()
 
   for(int i = 0; i < num_cells; i++)
   {
-    if(m_cell_pairs.data()[i] == cellid_t(1,1))
+    if(m_cell_flags.data()[i] == 2 &&
+       m_cell_pairs.data()[i] == cellid_t(1,1))
       correct++;
   }
 
