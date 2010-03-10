@@ -10,23 +10,6 @@
 typedef GridDataset::cellid_t cellid_t;
 
 
-////////////////////////////////////////////////////////////////////////////////
-
-// Simple compute kernel which computes the square of an input array
-//
-const char *KernelSource =
-    "\n" \
-    "__kernel void assign_gradient(                                         \n" \
-    "   __global float* input,                                              \n" \
-    "   __global short* output,                                             \n" \
-    "   const unsigned int count)                                           \n" \
-    "{                                                                      \n" \
-    "   int i = get_global_id(0);                                           \n" \
-    "       output[i] = 1;                                                  \n" \
-    "}                                                                      \n" \
-    "\n";
-
-
 cl_device_id s_device_id;             // compute device id
 cl_context s_context;                 // compute context
 cl_program s_program;                 // compute program
@@ -51,7 +34,18 @@ void GridDataset::init_opencl()
 
   // Create the compute program from the source buffer
   //
-  s_program = clCreateProgramWithSource(s_context, 1, (const char **) & KernelSource, NULL, &error_code);
+
+  QFile ocl_assign_grad_src ( ":/oclsources/assigngradient.cl" );
+  ocl_assign_grad_src.open(QIODevice::ReadOnly);
+
+  QByteArray KernelSource = ocl_assign_grad_src.readAll().constData();
+
+  const char * KernelSource_ptr = KernelSource.constData();
+
+  s_program = clCreateProgramWithSource
+              (s_context, 1, (const char **) & KernelSource_ptr,
+               NULL, &error_code);
+
   if (!s_program)
     throw std::runtime_error("Error: Failed to create compute program!\n");
 
@@ -64,7 +58,8 @@ void GridDataset::init_opencl()
     char buffer[2048];
 
     printf("Error: Failed to build program executable!\n");
-    clGetProgramBuildInfo(s_program, s_device_id, CL_PROGRAM_BUILD_LOG, sizeof(buffer), buffer, &len);
+    clGetProgramBuildInfo(s_program, s_device_id, CL_PROGRAM_BUILD_LOG,
+                          sizeof(buffer), buffer, &len);
     throw std::runtime_error(buffer);
   }
 
