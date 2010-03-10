@@ -101,6 +101,7 @@ public:
   u_int                        m_size_y;
   u_int                        m_num_levels;
   bool                         m_single_threaded_mode;
+  bool                         m_use_ocl;
 
   IModelController            *m_controller;
 
@@ -111,7 +112,8 @@ public:
         u_int        size_x,
         u_int        size_y,
         u_int        num_levels,
-        bool        threaded_mode);
+        bool         threaded_mode,
+        bool         use_ocl);
 
   virtual ~GridDataManager ();
 
@@ -120,10 +122,6 @@ public:
   void createDataPieces();
 
   void readFile ();
-
-  void initDataPieceForWork ( GridDataPiece *dp );
-
-  void initDataPieceForRender ( GridDataPiece  *dp );
 
   void workPiece ( GridDataPiece  * );
 

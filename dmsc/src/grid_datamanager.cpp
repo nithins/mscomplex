@@ -96,7 +96,9 @@ void GridDataManager::readFile ( )
   fstream infile ( m_filename.c_str(),fstream::in|fstream::binary );
 
   m_pieces[dp_idx]->dataset->init();
-  m_pieces[dp_idx+1]->dataset->init();
+
+  if(dp_idx+1 < m_pieces.size())
+    m_pieces[dp_idx+1]->dataset->init();
 
   for ( uint y = 0 ; y <m_size_y;y++ )
     for ( uint x = 0 ; x < m_size_x;x++ )
@@ -116,7 +118,7 @@ void GridDataManager::readFile ( )
       if(dp_idx < m_pieces.size()-1)
         m_pieces[dp_idx+1]->dataset->init();
 
-      if(m_single_threaded_mode == false)
+      if(m_single_threaded_mode == false  && m_use_ocl == false)
       {
         if(dp_idx%num_parallel == 0)
         {
@@ -163,21 +165,13 @@ void GridDataManager::clearInteriorGrad(uint start,uint end )
   }
 }
 
-void GridDataManager::initDataPieceForWork ( GridDataPiece *dp )
-{
-
-}
-
-void GridDataManager::initDataPieceForRender ( GridDataPiece *dp )
-{
-
-}
-
 void GridDataManager::workPiece ( GridDataPiece *dp )
 {
-  initDataPieceForWork ( dp );
+  if(m_use_ocl == true)
+    dp->dataset->assignGradients_ocl();
+  else
+    dp->dataset->assignGradients();
 
-  dp->dataset->assignGradients();
   dp->dataset->computeConnectivity(dp->msgraph);
 }
 
@@ -384,13 +378,15 @@ GridDataManager::GridDataManager
       u_int        size_x,
       u_int        size_y,
       u_int        num_levels,
-      bool         single_threaded_mode):
+      bool         single_threaded_mode,
+      bool         use_ocl):
     m_filename(filename),
     m_size_x(size_x),
     m_size_y(size_y),
     m_num_levels(num_levels),
     m_single_threaded_mode(single_threaded_mode),
-    m_bShowCriticalPointLabels(false)
+    m_bShowCriticalPointLabels(false),
+    m_use_ocl(use_ocl)
 {
 
   m_controller = IModelController::Create();
@@ -405,6 +401,14 @@ GridDataManager::GridDataManager
 
   //  try
   {
+    if(m_use_ocl)
+      GridDataset::init_opencl();
+
+    if(m_single_threaded_mode == true || m_use_ocl == true)
+    {
+      workAllPieces_st();
+    }
+
     if ( m_single_threaded_mode == false )
     {
       mergePiecesUp_mt();
@@ -413,12 +417,14 @@ GridDataManager::GridDataManager
     }
     else
     {
-      workAllPieces_st();
-
       mergePiecesUp_st();
 
       mergePiecesDown_st();
     }
+
+    if(m_use_ocl)
+      GridDataset::stop_opencl();
+
   }
 
   //  catch(std::exception &e)

@@ -1,10 +1,206 @@
 #include <grid_dataset.h>
 
 #include <discreteMorseAlgorithm.h>
-
 #include <vector>
 
+#include <CL/cl.h>
+
+#include <QFile>
+
 typedef GridDataset::cellid_t cellid_t;
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Simple compute kernel which computes the square of an input array
+//
+const char *KernelSource =
+    "\n" \
+    "__kernel void assign_gradient(                                         \n" \
+    "   __global float* input,                                              \n" \
+    "   __global short* output,                                             \n" \
+    "   const unsigned int count)                                           \n" \
+    "{                                                                      \n" \
+    "   int i = get_global_id(0);                                           \n" \
+    "       output[i] = 1;                                                  \n" \
+    "}                                                                      \n" \
+    "\n";
+
+
+cl_device_id s_device_id;             // compute device id
+cl_context s_context;                 // compute context
+cl_program s_program;                 // compute program
+
+
+void GridDataset::init_opencl()
+{
+
+  int error_code;                            // error code returned from api calls
+
+  // Connect to a compute device
+  //
+  error_code = clGetDeviceIDs(NULL, CL_DEVICE_TYPE_GPU , 1, &s_device_id, NULL);
+  if (error_code != CL_SUCCESS)
+    throw std::runtime_error("Error: Failed to create a device group!\n");
+
+  // Create a compute context
+  //
+  s_context = clCreateContext(0, 1, &s_device_id, NULL, NULL, &error_code);
+  if (!s_context)
+    throw std::runtime_error("Error: Failed to create a compute context!\n");
+
+  // Create the compute program from the source buffer
+  //
+  s_program = clCreateProgramWithSource(s_context, 1, (const char **) & KernelSource, NULL, &error_code);
+  if (!s_program)
+    throw std::runtime_error("Error: Failed to create compute program!\n");
+
+  // Build the program executable
+  //
+  error_code = clBuildProgram(s_program, 0, NULL, NULL, NULL, NULL);
+  if (error_code != CL_SUCCESS)
+  {
+    size_t len;
+    char buffer[2048];
+
+    printf("Error: Failed to build program executable!\n");
+    clGetProgramBuildInfo(s_program, s_device_id, CL_PROGRAM_BUILD_LOG, sizeof(buffer), buffer, &len);
+    throw std::runtime_error(buffer);
+  }
+
+}
+
+void GridDataset::stop_opencl()
+{
+  // Shutdown and cleanup
+  //
+  clReleaseProgram(s_program);
+  clReleaseContext(s_context);
+
+}
+
+
+#define _GET_GLOBAL(s,l)\
+(((s)/(2*(l)))*(2*(l)) + ((((s)%(2*(l))) == 0)?(0):(2*l)))
+
+void GridDataset::assignGradients_ocl()
+{
+
+
+  int error_code;                       // error code returned from api calls
+
+  rect_size_t sz = m_ext_rect.size();
+
+  uint num_verts = ((sz[0]>>1)+1)*((sz[1]>>1)+1);
+  uint num_cells = (sz[0]+1)*(sz[1]+1);
+
+  // Create a command commands
+  //
+  cl_command_queue commands = clCreateCommandQueue
+                              (s_context, s_device_id, 0, &error_code);
+  if (!commands)
+    throw std::runtime_error("Error: Failed to create a command commands!\n");
+
+
+  // Create the compute kernel in the program we wish to run
+  //
+  cl_kernel kernel = clCreateKernel(s_program, "assign_gradient", &error_code);
+  if (!kernel || error_code != CL_SUCCESS)
+    throw std::runtime_error("Error: Failed to create compute kernel!\n");
+
+
+  // Create the input and output arrays in device memory for our calculation
+  //
+  cl_mem vert_fns_cl = clCreateBuffer(s_context,  CL_MEM_READ_ONLY,
+                               sizeof(cell_fn_t) * num_verts, NULL, NULL);
+
+  cl_mem vert_pairs_cl = clCreateBuffer(s_context, CL_MEM_WRITE_ONLY,
+                                 sizeof(cellid_t) * num_cells, NULL, NULL);
+
+  if (!vert_fns_cl || !vert_pairs_cl)
+    throw std::runtime_error("Error: Failed to allocate device memory!\n");
+
+
+  // Write our data set into the input array in device memory
+  //
+  error_code = clEnqueueWriteBuffer
+               (commands, vert_fns_cl, CL_TRUE, 0, sizeof(cell_fn_t)* num_verts,
+               m_vertex_fns.data(), 0, NULL, NULL);
+
+  if (error_code != CL_SUCCESS)
+    std::runtime_error("Error: Failed to write to source array!\n");
+
+
+  // Set the arguments to our compute kernel
+  //
+  error_code = 0;
+  error_code  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &vert_fns_cl);
+  error_code |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &vert_pairs_cl);
+  error_code |= clSetKernelArg(kernel, 2, sizeof(unsigned int), &num_cells);
+
+  if (error_code != CL_SUCCESS)
+    std::runtime_error("Error: Failed to set kernel arguments! \n");
+
+
+  // Get the maximum work group size for executing the kernel on the device
+  //
+  size_t local[] = {8,8};
+
+  // Execute the kernel over the entire range of our 1d input data set
+  // using the maximum number of work group items for this device
+  //
+  size_t global[] =
+  {
+    _GET_GLOBAL(sz[0]+1,local[0]) ,
+    _GET_GLOBAL(sz[1]+1,local[1]) ,
+  }; // should be div by 2*local
+
+  _LOG_VAR(global[0]);
+  _LOG_VAR(global[1]);
+
+  error_code = clEnqueueNDRangeKernel(commands, kernel, 2, NULL, global, local, 0, NULL, NULL);
+  if (error_code)
+    std::runtime_error("Error: Failed to execute kernel!\n");
+
+
+  // Wait for the command commands to get serviced before reading back results
+  //
+  clFinish(commands);
+
+  // Read back the results from the device to verify the output
+  //
+
+  error_code = clEnqueueReadBuffer
+               ( commands, vert_pairs_cl, CL_TRUE, 0,
+                 sizeof(cellid_t) * num_cells, m_cell_pairs.data(), 0, NULL, NULL );
+
+  if (error_code != CL_SUCCESS)
+    std::runtime_error("Error: Failed to read output array! \n");
+
+
+  clReleaseMemObject(vert_fns_cl);
+  clReleaseMemObject(vert_pairs_cl);
+  clReleaseKernel(kernel);
+  clReleaseCommandQueue(commands);
+
+
+  // Validate our results
+  //
+
+  unsigned int correct = 0;               // number of correct results returned
+
+  for(int i = 0; i < num_cells; i++)
+  {
+    if(m_cell_pairs.data()[i] == cellid_t(1,1))
+      correct++;
+  }
+
+  // Print a brief summary detailing the results
+  //
+  printf("Computed '%d/%d' correct values!\n", correct, num_cells);
+
+  collateCriticalPoints();
+}
 
 void connectCps (GridDataset::mscomplex_t *msgraph,
                  GridDataset::cellid_t c1,
@@ -189,7 +385,6 @@ void GridDataset::clear_graddata()
   m_cell_flags.resize (boost::extents[0][0]);
   m_cell_pairs.resize (boost::extents[0][0]);
   m_critical_cells.clear();
-
 }
 
 GridDataset::cellid_t   GridDataset::getCellPairId (cellid_t c) const
@@ -379,8 +574,6 @@ void GridDataset::pairCells (cellid_t c,cellid_t p)
 void GridDataset::markCellCritical (cellid_t c)
 {
   m_cell_flags (c) = m_cell_flags (c) |CELLFLAG_CRITCAL;
-
-  m_critical_cells.push_back (c);
 }
 
 bool GridDataset::isTrueBoundryCell (cellid_t c) const
@@ -421,6 +614,7 @@ std::string GridDataset::getCellDescription (cellid_t c) const
 
 void  GridDataset::assignGradients()
 {
+
   // determine all the pairings of all cells in m_rect
   for (cell_coord_t y = m_rect.bottom(); y <= m_rect.top();y += 1)
     for (cell_coord_t x = m_rect.left(); x <= m_rect.right();x += 1)
@@ -495,7 +689,22 @@ void  GridDataset::assignGradients()
       }
     }
   }
+
+  collateCriticalPoints();
 }
+
+void  GridDataset::collateCriticalPoints()
+{
+  for (cell_coord_t y = m_ext_rect.bottom(); y <= m_ext_rect.top();y += 1)
+    for (cell_coord_t x = m_ext_rect.left(); x <= m_ext_rect.right();x += 1)
+    {
+    cellid_t c (x,y);
+
+    if (isCellCritical (c))
+      m_critical_cells.push_back(c);
+  }
+}
+
 
 inline void add_to_grad_tree_proxy (GridDataset::cellid_t)
 {

@@ -87,7 +87,7 @@ public:
   };
 
   typedef int16_t                          cell_coord_t;
-  typedef double                           cell_fn_t;
+  typedef float                            cell_fn_t;
   typedef rectangle_complex<cell_coord_t>  rect_cmplx_t;
   typedef rect_cmplx_t::rectangle_def      rect_t;
   typedef rect_cmplx_t::point_def          cellid_t;
@@ -102,9 +102,11 @@ public:
   typedef mscomplex_t::critical_point      critpt_t;
   typedef critpt_t::connection_t           critpt_conn_t;
 
-  typedef boost::multi_array<cell_fn_t,2>  varray_t;
-  typedef boost::multi_array<cellid_t,2>   cellpair_array_t;
-  typedef boost::multi_array<int8_t,2>     cellflag_array_t;
+
+  typedef int8_t                            cell_flag_t;
+  typedef boost::multi_array<cell_fn_t,2>   varray_t;
+  typedef boost::multi_array<cellid_t,2>    cellpair_array_t;
+  typedef boost::multi_array<cell_flag_t,2> cellflag_array_t;
 
 private:
 
@@ -137,18 +139,24 @@ public:
 
   GridDataset ( const rect_t &r,const rect_t &e );
 
-  void init();
+  void  init();
 
-  void set_cell_fn ( cellid_t c,cell_fn_t f );
+  void  set_cell_fn ( cellid_t c,cell_fn_t f );
 
-  void clear_graddata();
+  void  clear_graddata();
 
   // actual algorithm work
 public:
 
   void  assignGradients();
 
+  void  assignGradients_ocl();
+
   void  computeConnectivity(mscomplex_t *msgraph);
+
+  // sub tasks of the above routines
+public:
+  void  collateCriticalPoints();
 
   // dataset interface
 public:
@@ -223,6 +231,13 @@ public:
   // for rendering support
 public:
   void getCellCoord ( cellid_t c,double &x,double &y,double &z );
+
+  // opencl implementations
+public:
+
+  static void init_opencl();
+
+  static void stop_opencl();
 
 };
 
