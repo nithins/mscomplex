@@ -55,7 +55,6 @@ void GridDataManager::createPieces_quadtree(rect_t r,rect_t e,u_int level )
     GridDataPiece *dp = new GridDataPiece();
     dp->dataset = new GridDataset(r,e);
     dp->msgraph = new GridMSComplex(r,e);
-    dp->dataset->init();
     m_pieces.push_back(dp);
 
     return;
@@ -87,12 +86,18 @@ void GridDataManager::createPieces_quadtree(rect_t r,rect_t e,u_int level )
   createPieces_quadtree(r2,e2,level-1);
 }
 
+const uint num_parallel = 8;
+
 void GridDataManager::readFile ( )
 {
 
   u_int dp_idx = 0;
 
   fstream infile ( m_filename.c_str(),fstream::in|fstream::binary );
+
+  m_pieces[dp_idx]->dataset->init();
+  m_pieces[dp_idx+1]->dataset->init();
+
   for ( uint y = 0 ; y <m_size_y;y++ )
     for ( uint x = 0 ; x < m_size_x;x++ )
     {
@@ -108,6 +113,21 @@ void GridDataManager::readFile ( )
     if(!m_pieces[dp_idx]->dataset->get_ext_rect().contains(p))
     {
       ++dp_idx;
+      if(dp_idx < m_pieces.size()-1)
+        m_pieces[dp_idx+1]->dataset->init();
+
+      if(m_single_threaded_mode == false)
+      {
+        if(dp_idx%num_parallel == 0)
+        {
+          uint start = dp_idx - num_parallel;
+          uint end   = dp_idx;
+
+          workPiecesInRange_mt(start,end);
+
+          clearInteriorGrad(start,end);
+        }
+      }
     }
 
     m_pieces[dp_idx]->dataset->set_cell_fn(p,data);
@@ -115,6 +135,31 @@ void GridDataManager::readFile ( )
     if(dp_idx+1 < m_pieces.size() &&
        m_pieces[dp_idx+1]->dataset->get_ext_rect().contains(p))
       m_pieces[dp_idx+1]->dataset->set_cell_fn(p,data);
+  }
+
+  if(m_single_threaded_mode == false)
+  {
+    uint start = m_pieces.size() - m_pieces.size()%num_parallel ;
+    uint end   = m_pieces.size();
+
+    if(start == end)
+    {
+      start -= num_parallel;
+    }
+
+    workPiecesInRange_mt(start,end);
+    clearInteriorGrad(start,end);
+
+  }
+}
+
+void GridDataManager::clearInteriorGrad(uint start,uint end )
+{
+  for(uint i = start ; i < end; ++i)
+  {
+    GridDataPiece *dp = m_pieces[i];
+    dp->dataset->clear_graddata();
+    delete dp->dataset;
   }
 }
 
@@ -156,15 +201,16 @@ void mergePiecesDown
   dp->msgraph->merge_down(*dp1->msgraph,*dp2->msgraph);
 }
 
-void GridDataManager::workAllPieces_mt( )
+void GridDataManager::workPiecesInRange_mt(uint start,uint end )
 {
-  _LOG ( "Begin calculating asc/des manifolds for all pieces " );
+  _LOG ( "Begin calculating asc/des manifolds for pieces from "
+         <<start<<" to "<<end );
 
-  boost::thread ** threads = new boost::thread*[ m_pieces.size() ];
+  boost::thread ** threads = new boost::thread*[ end-start ];
 
   uint threadno = 0;
 
-  for ( uint i = 0 ; i < m_pieces.size();i++ )
+  for ( uint i = start ; i < end;i++ )
   {
     _LOG ( "Kicking off thread "<<threadno );
 
@@ -176,7 +222,7 @@ void GridDataManager::workAllPieces_mt( )
 
   threadno = 0;
 
-  for ( uint i = 0 ; i < m_pieces.size();i++ )
+  for ( uint i = start ; i < end;i++ )
   {
     threads[threadno]->join();
     _LOG ( "thread "<<threadno<<" joint" );
@@ -186,6 +232,11 @@ void GridDataManager::workAllPieces_mt( )
   delete []threads;
 
   _LOG ( "End calculating asc/des manifolds for all pieces " );
+}
+
+void GridDataManager::workAllPieces_mt( )
+{
+  workPiecesInRange_mt(0,m_pieces.size());
 }
 
 void GridDataManager::workAllPieces_st( )
@@ -227,7 +278,7 @@ void GridDataManager::mergePiecesUp_mt( )
       GridDataPiece *dp2 = m_pieces[j+1];
       GridDataPiece *dp  = m_pieces[num_leafs+j/2];
       threads[threadno++] = new boost::thread
-                          ( boost::bind ( &mergePiecesUp,dp,dp1,dp2 ));
+                            ( boost::bind ( &mergePiecesUp,dp,dp1,dp2 ));
     }
 
     threadno = 0;
@@ -315,7 +366,7 @@ void GridDataManager::mergePiecesDown_mt()
       GridDataPiece *dp2 = m_pieces[num_nodes- 2*j-1];
 
       threads[threadno++] = new boost::thread
-                          ( boost::bind ( &mergePiecesDown,dp,dp1,dp2 ));
+                            ( boost::bind ( &mergePiecesDown,dp,dp1,dp2 ));
     }
 
     threadno = 0;
@@ -356,13 +407,9 @@ GridDataManager::GridDataManager
   {
     if ( m_single_threaded_mode == false )
     {
-      workAllPieces_mt();
-
       mergePiecesUp_mt();
 
       mergePiecesDown_mt();
-
-      exit(0);
     }
     else
     {
@@ -377,15 +424,19 @@ GridDataManager::GridDataManager
   //  catch(std::exception &e)
   //  {
 
-        //logAllConnections("log/dp-");
+  //
 
-//        throw;
+  //        throw;
 
   //  }
 
   _LOG ( "--------------------------" );
   _LOG ( "Finished Processing peices" );
   _LOG ( "==========================" );
+
+  logAllConnections("log/dp-");
+  if ( m_single_threaded_mode == false )
+    exit(0);
 
   for(uint i = 0 ; i <m_pieces.size();++i)
   {

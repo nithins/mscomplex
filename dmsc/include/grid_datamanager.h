@@ -129,7 +129,11 @@ public:
 
   void workAllPieces_mt( );
 
+  void workPiecesInRange_mt(uint ,uint );
+
   void workAllPieces_st( );
+
+  void clearInteriorGrad(uint start,uint end );
 
   void mergePiecesUp_mt( );
 
