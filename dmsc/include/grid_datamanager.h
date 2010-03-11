@@ -100,6 +100,7 @@ public:
   u_int                        m_size_x;
   u_int                        m_size_y;
   u_int                        m_num_levels;
+  u_int                        m_num_canc;
   bool                         m_single_threaded_mode;
   bool                         m_use_ocl;
 
@@ -113,7 +114,8 @@ public:
         u_int        size_y,
         u_int        num_levels,
         bool         threaded_mode,
-        bool         use_ocl);
+        bool         use_ocl,
+        u_int        num_canc);
 
   virtual ~GridDataManager ();
 

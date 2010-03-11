@@ -379,14 +379,16 @@ GridDataManager::GridDataManager
       u_int        size_y,
       u_int        num_levels,
       bool         single_threaded_mode,
-      bool         use_ocl):
+      bool         use_ocl,
+      u_int        num_canc):
     m_filename(filename),
     m_size_x(size_x),
     m_size_y(size_y),
     m_num_levels(num_levels),
     m_single_threaded_mode(single_threaded_mode),
     m_bShowCriticalPointLabels(false),
-    m_use_ocl(use_ocl)
+    m_use_ocl(use_ocl),
+    m_num_canc(num_canc)
 {
 
   m_controller = IModelController::Create();
@@ -413,11 +415,15 @@ GridDataManager::GridDataManager
     {
       mergePiecesUp_mt();
 
+      m_pieces[m_pieces.size()-1]->msgraph->simplify_un_simplify(num_canc);
+
       mergePiecesDown_mt();
     }
     else
     {
       mergePiecesUp_st();
+
+      m_pieces[m_pieces.size()-1]->msgraph->simplify_un_simplify(num_canc);
 
       mergePiecesDown_st();
     }
@@ -441,6 +447,7 @@ GridDataManager::GridDataManager
   _LOG ( "==========================" );
 
   logAllConnections("log/dp-");
+
   if ( m_single_threaded_mode == false )
     exit(0);
 
@@ -453,8 +460,6 @@ GridDataManager::GridDataManager
     dp->create_grad_rens();
 
     dp->create_surf_ren();
-
-
   }
 
   create_ui();

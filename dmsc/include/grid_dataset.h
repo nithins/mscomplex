@@ -36,8 +36,9 @@
 class GridMSComplex:
     public MSComplex<rectangle_complex<short int>::point_def>
 {
+public:
   typedef int16_t                          cell_coord_t;
-  typedef double                           cell_fn_t;
+  typedef float                            cell_fn_t;
   typedef rectangle_complex<cell_coord_t>  rect_cmplx_t;
   typedef rect_cmplx_t::rectangle_def      rect_t;
   typedef rect_cmplx_t::point_def          cellid_t;
@@ -45,8 +46,9 @@ class GridMSComplex:
   typedef rect_cmplx_t::size_def           rect_size_t;
 
   typedef std::vector<cellid_t>            cellid_list_t;
-  typedef std::pair<cellid_t,cellid_t>     cellid_pair_t;
-  typedef std::vector<cellid_pair_t>       cellid_pair_list_t;
+  typedef std::pair<uint,uint>             crit_idx_pair_t;
+  typedef std::vector<crit_idx_pair_t>     crit_idx_pair_list_t;
+
 
   typedef GridMSComplex                    mscomplex_t;
   typedef mscomplex_t::critical_point      critpt_t;
@@ -55,11 +57,18 @@ class GridMSComplex:
   typedef mscomplex_t::critical_point::connection_t::const_iterator const_conn_iter_t;
 
   typedef std::vector<cell_fn_t>           cp_fn_list_t;
-public:
 
   rect_t        m_rect;
   rect_t        m_ext_rect;
   cp_fn_list_t  m_cp_fns;
+
+
+  // call these functions only at the highest levels
+  void simplify_un_simplify(uint max_cancellations );
+
+  void simplify(crit_idx_pair_list_t &,uint max_cancellations);
+
+  void un_simplify(const crit_idx_pair_list_t &);
 
   void clear();
 
@@ -95,8 +104,6 @@ public:
   typedef rect_cmplx_t::size_def           rect_size_t;
 
   typedef std::vector<cellid_t>            cellid_list_t;
-  typedef std::pair<cellid_t,cellid_t>     cellid_pair_t;
-  typedef std::vector<cellid_pair_t>       cellid_pair_list_t;
 
   typedef GridMSComplex                    mscomplex_t;
   typedef mscomplex_t::critical_point      critpt_t;

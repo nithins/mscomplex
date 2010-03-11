@@ -23,7 +23,8 @@ string usage_string(const char * progname)
       "[-l <levels>] "\
       "[--buffer-zone-width <buf-zone-width>]"\
       "[-st]"\
-      "[-ocl]"<<endl;
+      "[-ocl]"\
+      "[--num-cancellations <num>]"<<endl;
 
   return ss.str();
 }
@@ -112,6 +113,7 @@ IModel * parse_grid(string cmdline)
 
   const boost::regex ocl_re ( "(-ocl)" );
 
+  const boost::regex num_canc_re ( "(--num-cancellations ([[:digit:]]+))" );
 
   uint   size_x = 0, size_y = 0;
 
@@ -122,6 +124,8 @@ IModel * parse_grid(string cmdline)
   bool   use_ocl = false;
 
   uint   num_levels  = 1;
+
+  uint   num_canc = 0;
 
   boost::smatch matches;
 
@@ -166,8 +170,15 @@ IModel * parse_grid(string cmdline)
     num_levels = atoi ( ml.c_str() );
   }
 
+  if ( regex_search ( cmdline,matches, num_canc_re ) )
+  {
+    string num_canc_str ( matches[2].first,matches[2].second );
+
+    num_canc = atoi ( num_canc_str.c_str() );
+  }
+
   return new GridDataManager
-      (filename,size_x,size_y,num_levels,single_thread,use_ocl);
+      (filename,size_x,size_y,num_levels,single_thread,use_ocl,num_canc);
 }
 
 
