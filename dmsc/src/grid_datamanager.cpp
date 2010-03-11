@@ -395,11 +395,11 @@ GridDataManager::GridDataManager
 
   createDataPieces();
 
-  readFile ();
-
   _LOG ( "==========================" );
   _LOG ( "Starting Processing Peices" );
   _LOG ( "--------------------------" );
+
+  readFile ();
 
   //  try
   {

@@ -53,7 +53,10 @@ set(dmsc_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/main.cpp
 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/quad_dataset.cpp
 	      
 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/grid_dataset.h
-	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/grid_dataset.cpp	      
+	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/grid_dataset.cpp
+	      
+	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/grid_mscomplex.h
+	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/grid_mscomplex.cpp	      
 	      
 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/grid_datamanager.h  
 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/grid_datamanager.cpp

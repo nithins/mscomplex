@@ -24,67 +24,14 @@
 
 #include <vector>
 
-#include <discreteMorseDS.h>
-
-#include <cpputils.h>
-#include <rectangle_complex.h>
-
 #include <boost/multi_array.hpp>
 
+#include <grid_mscomplex.h>
 
 
-class GridMSComplex:
-    public MSComplex<rectangle_complex<short int>::point_def>
+
+class GridDataset:public grid_types_t
 {
-public:
-  typedef int16_t                          cell_coord_t;
-  typedef float                            cell_fn_t;
-  typedef rectangle_complex<cell_coord_t>  rect_cmplx_t;
-  typedef rect_cmplx_t::rectangle_def      rect_t;
-  typedef rect_cmplx_t::point_def          cellid_t;
-  typedef rect_cmplx_t::point_def          rect_point_t;
-  typedef rect_cmplx_t::size_def           rect_size_t;
-
-  typedef std::vector<cellid_t>            cellid_list_t;
-  typedef std::pair<uint,uint>             crit_idx_pair_t;
-  typedef std::vector<crit_idx_pair_t>     crit_idx_pair_list_t;
-
-
-  typedef GridMSComplex                    mscomplex_t;
-  typedef mscomplex_t::critical_point      critpt_t;
-  typedef mscomplex_t::critical_point::connection_t                 conn_t;
-  typedef mscomplex_t::critical_point::connection_t::iterator       conn_iter_t;
-  typedef mscomplex_t::critical_point::connection_t::const_iterator const_conn_iter_t;
-
-  typedef std::vector<cell_fn_t>           cp_fn_list_t;
-
-  rect_t        m_rect;
-  rect_t        m_ext_rect;
-  cp_fn_list_t  m_cp_fns;
-
-
-  // call these functions only at the highest levels
-  void simplify_un_simplify(uint max_cancellations );
-
-  void simplify(crit_idx_pair_list_t &,uint max_cancellations);
-
-  void un_simplify(const crit_idx_pair_list_t &);
-
-  void clear();
-
-  static mscomplex_t * merge_up(const mscomplex_t& msc1,const mscomplex_t& msc2);
-
-  void merge_down(mscomplex_t& msc1,mscomplex_t& msc2);
-
-  GridMSComplex(rect_t r,rect_t e):m_rect(r),m_ext_rect(e)
-  {
-  }
-};
-
-class GridDataset/*:
-    public IDiscreteDataset<rectangle_complex<short int>::point_def>*/
-{
-
 
 public:
 
@@ -95,21 +42,9 @@ public:
     CELLFLAG_CRITCAL = 2,
   };
 
-  typedef int16_t                          cell_coord_t;
-  typedef float                            cell_fn_t;
-  typedef rectangle_complex<cell_coord_t>  rect_cmplx_t;
-  typedef rect_cmplx_t::rectangle_def      rect_t;
-  typedef rect_cmplx_t::point_def          cellid_t;
-  typedef rect_cmplx_t::point_def          rect_point_t;
-  typedef rect_cmplx_t::size_def           rect_size_t;
-
-  typedef std::vector<cellid_t>            cellid_list_t;
-
-  typedef GridMSComplex                    mscomplex_t;
-  typedef mscomplex_t::critical_point      critpt_t;
-  typedef critpt_t::connection_t           critpt_conn_t;
-
-
+  typedef GridMSComplex                     mscomplex_t;
+  typedef mscomplex_t::critical_point       critpt_t;
+  typedef critpt_t::connection_t            critpt_conn_t;
   typedef int8_t                            cell_flag_t;
   typedef boost::multi_array<cell_fn_t,2>   varray_t;
   typedef boost::multi_array<cellid_t,2>    cellpair_array_t;
