@@ -9,11 +9,9 @@
 
 typedef GridDataset::cellid_t cellid_t;
 
-
 cl_device_id s_device_id;             // compute device id
 cl_context s_context;                 // compute context
 cl_program s_program;                 // compute program
-
 
 void GridDataset::init_opencl()
 {
@@ -57,10 +55,10 @@ void GridDataset::init_opencl()
     size_t len;
     char buffer[2048];
 
-    printf("Error: Failed to build program executable!\n");
     clGetProgramBuildInfo(s_program, s_device_id, CL_PROGRAM_BUILD_LOG,
                           sizeof(buffer), buffer, &len);
-    throw std::runtime_error(buffer);
+
+    throw std::runtime_error(std::string(buffer));
   }
 
 }
@@ -154,7 +152,7 @@ void GridDataset::stop_opencl()
 
   // Get the maximum work group size for executing the kernel on the device
   //
-  size_t local[] = {16,16};
+  size_t local[] = {8,8};
 
   // Execute the kernel over the entire range of our 1d input data set
   // using the maximum number of work group items for this device
@@ -164,9 +162,6 @@ void GridDataset::stop_opencl()
     _GET_GLOBAL(sz[0]+1,local[0]) ,
     _GET_GLOBAL(sz[1]+1,local[1]) ,
   }; // should be div by 2*local
-
-  _LOG_VAR(global[0]);
-  _LOG_VAR(global[1]);
 
   error_code = clEnqueueNDRangeKernel(commands, kernel, 2, NULL,
                                       global, local, 0, NULL, NULL);
@@ -193,28 +188,15 @@ void GridDataset::stop_opencl()
   if (error_code != CL_SUCCESS)
     std::runtime_error("Error: Failed to read output array! \n");
 
-
   clReleaseMemObject(vert_fns_cl);
   clReleaseMemObject(cell_pairs_cl);
   clReleaseKernel(kernel);
   clReleaseCommandQueue(commands);
 
-
   // Validate our results
   //
 
-  unsigned int correct = 0;               // number of correct results returned
-
-  for(int i = 0; i < num_cells; i++)
-  {
-    if(m_cell_flags.data()[i] == 2 &&
-       m_cell_pairs.data()[i] == cellid_t(1,1))
-      correct++;
-  }
-
-  // Print a brief summary detailing the results
-  //
-  printf("Computed '%d/%d' correct values!\n", correct, num_cells);
+  _LOG("grad assignment done");
 
   collateCriticalPoints();
 }

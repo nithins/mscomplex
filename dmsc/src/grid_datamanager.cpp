@@ -812,7 +812,7 @@ void GridDataPiece::create_grad_rens()
     {
       cellid_t p = dataset->getCellPairId(c);
 
-      if(dataset->isPairOrientationCorrect(p,c))
+      if(dataset->isPairOrientationCorrect(c,p))
       {
         double x,y,z;
 
