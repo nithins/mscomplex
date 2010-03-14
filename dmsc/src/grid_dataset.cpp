@@ -58,6 +58,19 @@ void GridDataset::init_opencl()
     clGetProgramBuildInfo(s_program, s_device_id, CL_PROGRAM_BUILD_LOG,
                           sizeof(buffer), buffer, &len);
 
+
+      // Log the binary generated
+
+    size_t bin_size;
+    clGetProgramInfo(s_program,CL_PROGRAM_BINARY_SIZES,sizeof(size_t),&bin_size,NULL);
+    char * ptx_buffer = new char[bin_size];
+
+    clGetProgramInfo(s_program,CL_PROGRAM_BINARIES,sizeof(ptx_buffer),&ptx_buffer,NULL);
+
+    _LOG_VAR(std::string(ptx_buffer));
+
+    delete []ptx_buffer;
+
     throw std::runtime_error(std::string(buffer));
   }
 
@@ -83,6 +96,7 @@ void GridDataset::stop_opencl()
   int error_code;                       // error code returned from api calls
 
   rect_size_t sz = m_ext_rect.size();
+  rect_size_t vfn_img_sz = rect_size_t((sz[0]>>1)+1,(sz[1]>>1)+1);
 
   uint num_verts = ((sz[0]>>1)+1)*((sz[1]>>1)+1);
   uint num_cells = (sz[0]+1)*(sz[1]+1);
@@ -104,8 +118,18 @@ void GridDataset::stop_opencl()
 
   // Create the input and output arrays in device memory for our calculation
   //
-  cl_mem vert_fns_cl   = clCreateBuffer(s_context,  CL_MEM_READ_ONLY,
-                                        sizeof(cell_fn_t) * num_verts, NULL, NULL);
+
+  cl_image_format v_fn_imgfmt;
+  v_fn_imgfmt.image_channel_data_type = CL_FLOAT;
+  v_fn_imgfmt.image_channel_order     = CL_R;
+
+  cl_mem vfn_img_cl = clCreateImage2D
+                      (s_context,CL_MEM_READ_ONLY| CL_MEM_COPY_HOST_PTR,
+                       &v_fn_imgfmt,vfn_img_sz[0],vfn_img_sz[1],0,
+                       m_vertex_fns.data(),&error_code);
+
+  if (error_code != CL_SUCCESS)
+    throw std::runtime_error("Failed to create cell Fn device texture!\n");
 
   cl_mem cell_pairs_cl = clCreateBuffer(s_context, CL_MEM_WRITE_ONLY,
                                         sizeof(cellid_t) * num_cells, NULL, NULL);
@@ -114,15 +138,8 @@ void GridDataset::stop_opencl()
                                         sizeof(cell_flag_t) * num_cells, NULL, NULL);
 
 
-  if (!vert_fns_cl || !cell_pairs_cl)
+  if (!vfn_img_cl || !cell_pairs_cl ||!cell_flags_cl)
     throw std::runtime_error("Error: Failed to allocate device memory!\n");
-
-
-  // Write our data set into the input array in device memory
-  //
-  error_code = clEnqueueWriteBuffer
-               (commands, vert_fns_cl, CL_TRUE, 0, sizeof(cell_fn_t)* num_verts,
-                m_vertex_fns.data(), 0, NULL, NULL);
 
   if (error_code != CL_SUCCESS)
     std::runtime_error("Error: Failed to write to source array!\n");
@@ -131,14 +148,10 @@ void GridDataset::stop_opencl()
   cell_coord_t x_min = m_ext_rect.left()  ,x_max = m_ext_rect.right();
   cell_coord_t y_min = m_ext_rect.bottom(),y_max = m_ext_rect.top();
 
-  _LOG_VAR(x_min<<","<<x_max);
-  _LOG_VAR(y_min<<","<<y_max);
-
-
   // Set the arguments to our compute kernel
   //
   error_code = 0;
-  error_code  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &vert_fns_cl);
+  error_code  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &vfn_img_cl);
   error_code |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &cell_pairs_cl);
   error_code |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &cell_flags_cl);
   error_code |= clSetKernelArg(kernel, 3, sizeof(cell_coord_t), &x_min);
@@ -188,8 +201,9 @@ void GridDataset::stop_opencl()
   if (error_code != CL_SUCCESS)
     std::runtime_error("Error: Failed to read output array! \n");
 
-  clReleaseMemObject(vert_fns_cl);
+  clReleaseMemObject(vfn_img_cl);
   clReleaseMemObject(cell_pairs_cl);
+  clReleaseMemObject(cell_flags_cl);
   clReleaseKernel(kernel);
   clReleaseCommandQueue(commands);
 

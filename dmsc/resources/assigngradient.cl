@@ -7,6 +7,8 @@
 #define cell_coord_t short
 #define cell_flag_t  uchar
 
+const sampler_t vert_fn_sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
+
 short get_cell_dim(const short2 c)
 {
   int dim = (c.x%2) + (c.y%2);
@@ -123,28 +125,22 @@ short get_cell_points(const short2 c,short2 *p)
 }
 
 
-cell_fn_t get_cell_fn(short2 c,short2 bb_sz,
-		      __global cell_fn_t *cell_fns)
+cell_fn_t get_cell_fn(short2 c,__read_only image2d_t vert_fn_img)
 {  
+  int2 imgcrd;
   
-  c.x /=2 ;
-  c.y /=2 ; 
+  imgcrd.x = c.x/2;
+  imgcrd.y = c.y/2;
   
-  int fn_pos = c.x *((bb_sz.y/2)+1) + c.y;
+  float4 col = read_imagef(vert_fn_img, vert_fn_sampler, imgcrd);
   
-  return cell_fns[fn_pos];  
-  
-  // return sin(0.0f+0.125f*c.x + 0.5f)*sin(0.0f+0.125f*c.y + 0.5f);
-  
-  
+  return col[0];     
 }
 
-int comparePoints(short2 c1,short2 c2,short2 bb_sz,
-		  __global cell_fn_t *cell_fns)
+int comparePoints(short2 c1,short2 c2,__read_only image2d_t vert_fn_img)
 {    
-  cell_fn_t f1 = get_cell_fn(c1,bb_sz,cell_fns);
-  cell_fn_t f2 = get_cell_fn(c2,bb_sz,cell_fns);    
-
+  cell_fn_t f1 = get_cell_fn(c1, vert_fn_img);
+  cell_fn_t f2 = get_cell_fn(c2, vert_fn_img);    
     
   if(f1 < f2 ) return 1;
   if(f2 < f1 ) return 0;
@@ -156,32 +152,29 @@ int comparePoints(short2 c1,short2 c2,short2 bb_sz,
   return 0;
 }
 
-int max_pt_idx(short2 *pts,int num_pts,short2 bb_sz,
-	       __global cell_fn_t *cell_fns)
+int max_pt_idx(short2 *pts,int num_pts,int offset,__read_only image2d_t vert_fn_img)
 {
-  int pt_max_idx = 0;
+  int pt_max_idx = offset;
   
-  for(int i = 1 ; i < num_pts;i++)
-    if(comparePoints(pts[pt_max_idx],pts[i],bb_sz,cell_fns) == 1)
+  for(int i = offset+1 ; i < num_pts;i++)
+    if(comparePoints(pts[pt_max_idx],pts[i], vert_fn_img) == 1)
       pt_max_idx = i;
     
   return pt_max_idx;  
 }
 
-void ins_sort_pts(short2 *pts,int num_pts,short2 bb_sz,
-	          __global cell_fn_t *cell_fns)
-{
+int ins_sort_pts(short2 *pts,int num_pts,__read_only image2d_t vert_fn_img)
+{  
     for(int i = 0 ; i < num_pts;i++)
-    {
-      int swp_idx   = max_pt_idx(pts+i,num_pts-i,bb_sz,cell_fns) + i;      
+    {      
+      int swp_idx   = max_pt_idx(pts,num_pts,i,vert_fn_img);            
       short2 temp   = pts[i];
       pts[i]        = pts[swp_idx];
       pts[swp_idx]  = temp;
     }
 }
 
-int compareCells(short2 c1,short2 c2,short2 bb_sz,
-		  __global cell_fn_t *cell_fns)
+int compareCells(short2 c1,short2 c2,__read_only image2d_t vert_fn_img)
 {
   
   short2 pt1[4],pt2[4];
@@ -189,17 +182,17 @@ int compareCells(short2 c1,short2 c2,short2 bb_sz,
   int pt1_ct = get_cell_points(c1,pt1);
   int pt2_ct = get_cell_points(c2,pt2);      
   
-  ins_sort_pts(pt1,pt1_ct,bb_sz,cell_fns);
-  ins_sort_pts(pt2,pt2_ct,bb_sz,cell_fns);
+  ins_sort_pts(pt1,pt1_ct, vert_fn_img);
+  ins_sort_pts(pt2,pt2_ct, vert_fn_img);
   
   int num_lex_comp = min(pt1_ct,pt2_ct);
   
   for(int i = 0 ;i < num_lex_comp;++i)
   {
-    if(comparePoints(pt1[i],pt2[i],bb_sz,cell_fns) == 1)
+    if(comparePoints(pt1[i],pt2[i], vert_fn_img) == 1)
       return 1;
     
-    if(comparePoints(pt2[i],pt1[i],bb_sz,cell_fns) == 1)
+    if(comparePoints(pt2[i],pt1[i], vert_fn_img) == 1)
       return 0;
   }
   
@@ -207,8 +200,9 @@ int compareCells(short2 c1,short2 c2,short2 bb_sz,
   
   return 0;  
 }
+
 __kernel void assign_gradient
-( __global cell_fn_t    *cell_fns,      
+( __read_only image2d_t  vert_fn_img,      
   __global cell_coord_t *cell_pairs,
   __global cell_flag_t  *cell_flags,     
    const cell_coord_t x_min,
@@ -252,7 +246,7 @@ __kernel void assign_gradient
      
      for( int j = 0 ; j < f_ct;++j)
      {       
-       if(compareCells(c,f[j],bb_sz,cell_fns) == 1)
+       if(compareCells(c,f[j], vert_fn_img) == 1)
 	 cf_usable[i] = 0; 
      }
    }
@@ -271,7 +265,9 @@ __kernel void assign_gradient
        }
        else
        {
-	 if(compareCells(cf[i],p,bb_sz,cell_fns) == 1)
+	 int res = compareCells(cf[i],p,vert_fn_img);
+	 
+	 if( res == 1)
 	   p = cf[i];
        }	 
      } 
