@@ -202,9 +202,9 @@ int compareCells(short2 c1,short2 c2,__read_only image2d_t vert_fn_img)
 }
 
 __kernel void assign_gradient
-( __read_only image2d_t  vert_fn_img,      
-  __global cell_coord_t *cell_pairs,
-  __global cell_flag_t  *cell_flags,     
+( __read_only  image2d_t  vert_fn_img,
+  __write_only image2d_t  cell_pr_img,
+  __write_only image2d_t  cell_fg_img,
    const cell_coord_t x_min,
    const cell_coord_t x_max,
    const cell_coord_t y_min,   
@@ -265,27 +265,124 @@ __kernel void assign_gradient
        }
        else
        {
-	 int res = compareCells(cf[i],p,vert_fn_img);
-	 
-	 if( res == 1)
+	 if(compareCells(cf[i],p,vert_fn_img) == 1)
 	   p = cf[i];
-       }	 
+       }
      } 
-   }
+   }  
+
    
-   uint cell_op_idx = (c.x)*(y_max - y_min+1) + (c.y);
+   int2 ccoord;
+   ccoord.y = c.x;
+   ccoord.x = c.y;
    
    if(is_paired == 1)
-   {   
-    cell_pairs[cell_op_idx*2+0] = x_min+p.x;
-    cell_pairs[cell_op_idx*2+1] = y_min+p.y;
-    
-    cell_flags[cell_op_idx] = 1;
+   {
+     int4 pr;
+     pr.x = p.x + x_min;
+     pr.y = p.y + y_min;
+     pr.z = 0;
+     pr.w = 0;
+     
+     write_imagei(cell_pr_img,ccoord,pr);
+     
+     uint4 fg;
+     fg.x = 1;
+     fg.y = 0;
+     fg.z = 0;
+     fg.w = 0;
+     
+     write_imageui(cell_fg_img,ccoord,fg);
    }
    else
    {
-     cell_flags[cell_op_idx] = 2;
+     uint4 fg;
+     fg.x = 2;
+     fg.y = 0;
+     fg.z = 0;
+     fg.w = 0;
+     
+     write_imageui(cell_fg_img,ccoord,fg);
    }   
-}                              
+}
+
+const sampler_t cell_pr_sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
+const sampler_t cell_fg_sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
+
+__kernel void complete_pairings
+(__read_only  image2d_t  cell_pr_img,
+ __write_only image2d_t  cell_pr_img_out,
+ __read_only  image2d_t  cell_fg_img,
+ __write_only image2d_t  cell_fg_img_out,
+   const cell_coord_t x_min,
+   const cell_coord_t x_max,
+   const cell_coord_t y_min,
+   const cell_coord_t y_max)
+{
+    short2 c,bb_sz;
+
+    bb_sz.x = x_max-x_min;
+    bb_sz.y = y_max-y_min;
+
+    c.x = get_global_id(0);
+    c.y = get_global_id(1);
 
 
+   if(c.x > bb_sz.x || c.y > bb_sz.y)
+     return;
+   
+   int2 ccoord;
+   ccoord.y = c.x;
+   ccoord.x = c.y;
+   
+   uint4 cflgs_arr = read_imagei(cell_fg_img, cell_fg_sampler, ccoord);
+   
+   cell_flag_t cflgs = cflgs_arr[0] ;
+
+   if(cflgs == 2)
+   {
+    short2 f[4];
+
+    int f_ct = get_cell_facets(c,f);
+
+    short2 p;
+    int is_paired = 0;
+
+    for( int i = 0 ; i < f_ct;++i)
+    {
+      int2 imgcrd;
+      imgcrd.y = f[i].x;
+      imgcrd.x = f[i].y;
+
+      int4 fp = read_imagei(cell_pr_img, cell_pr_sampler, imgcrd);
+
+      if(fp.x == c.x + x_min && fp.y == c.y + y_min)
+      {
+       p = f[i];
+       is_paired = 1;
+       break;
+      }
+    }
+
+    if(is_paired == 1)
+    {
+     int4 pr;
+     pr.x = p.x + x_min;
+     pr.y = p.y + y_min;
+     pr.z = 0;
+     pr.w = 0;
+     
+     write_imagei(cell_pr_img_out,ccoord,pr);
+     
+     uint4 fg;
+     fg.x = 1;
+     fg.y = 0;
+     fg.z = 0;
+     fg.w = 0;
+     
+     write_imageui(cell_fg_img_out,ccoord,fg);
+      
+    }
+  }
+}
+      

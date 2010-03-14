@@ -5,6 +5,8 @@
 
 #include <CL/cl.h>
 
+#include <timer.h>
+
 #include <QFile>
 
 typedef GridDataset::cellid_t cellid_t;
@@ -59,7 +61,7 @@ void GridDataset::init_opencl()
                           sizeof(buffer), buffer, &len);
 
 
-      // Log the binary generated
+    // Log the binary generated
 
     size_t bin_size;
     clGetProgramInfo(s_program,CL_PROGRAM_BINARY_SIZES,sizeof(size_t),&bin_size,NULL);
@@ -92,14 +94,18 @@ void GridDataset::stop_opencl()
     void GridDataset::assignGradients_ocl()
 {
 
+  Timer t;
+
+  t.start();
 
   int error_code;                       // error code returned from api calls
 
   rect_size_t sz = m_ext_rect.size();
-  rect_size_t vfn_img_sz = rect_size_t((sz[0]>>1)+1,(sz[1]>>1)+1);
 
-  uint num_verts = ((sz[0]>>1)+1)*((sz[1]>>1)+1);
-  uint num_cells = (sz[0]+1)*(sz[1]+1);
+  size_t cell_img_ogn[3] = {0,0,0};
+  size_t cell_img_rgn[3] = {sz[0]+1,sz[1]+1,1};
+
+  size_t vert_img_rgn[3]  = {(sz[0]>>1)+1,(sz[1]>>1)+1,1};
 
   // Create a command commands
   //
@@ -119,30 +125,45 @@ void GridDataset::stop_opencl()
   // Create the input and output arrays in device memory for our calculation
   //
 
-  cl_image_format v_fn_imgfmt;
-  v_fn_imgfmt.image_channel_data_type = CL_FLOAT;
-  v_fn_imgfmt.image_channel_order     = CL_R;
+  cl_image_format vert_fn_imgfmt,cell_pr_imgfmt,cell_fg_imgfmt;
+
+  vert_fn_imgfmt.image_channel_data_type = CL_FLOAT;
+  vert_fn_imgfmt.image_channel_order     = CL_R;
+
+  cell_pr_imgfmt.image_channel_data_type = CL_SIGNED_INT16;
+  cell_pr_imgfmt.image_channel_order     = CL_RG;
+
+  cell_fg_imgfmt.image_channel_data_type = CL_UNSIGNED_INT8;
+  cell_fg_imgfmt.image_channel_order     = CL_R;
 
   cl_mem vfn_img_cl = clCreateImage2D
                       (s_context,CL_MEM_READ_ONLY| CL_MEM_COPY_HOST_PTR,
-                       &v_fn_imgfmt,vfn_img_sz[0],vfn_img_sz[1],0,
+                       &vert_fn_imgfmt,vert_img_rgn[0],vert_img_rgn[1],0,
                        m_vertex_fns.data(),&error_code);
 
   if (error_code != CL_SUCCESS)
-    throw std::runtime_error("Failed to create cell Fn device texture!\n");
+    throw std::runtime_error("Failed to create cell fn device texture!\n");
 
-  cl_mem cell_pairs_cl = clCreateBuffer(s_context, CL_MEM_WRITE_ONLY,
-                                        sizeof(cellid_t) * num_cells, NULL, NULL);
-
-  cl_mem cell_flags_cl = clCreateBuffer(s_context, CL_MEM_WRITE_ONLY,
-                                        sizeof(cell_flag_t) * num_cells, NULL, NULL);
-
-
-  if (!vfn_img_cl || !cell_pairs_cl ||!cell_flags_cl)
-    throw std::runtime_error("Error: Failed to allocate device memory!\n");
+  cl_mem cell_pr_img_cl = clCreateImage2D
+                          (s_context,CL_MEM_WRITE_ONLY,
+                           &cell_pr_imgfmt,cell_img_rgn[0],cell_img_rgn[1],0,
+                           NULL,&error_code);
 
   if (error_code != CL_SUCCESS)
-    std::runtime_error("Error: Failed to write to source array!\n");
+    throw std::runtime_error("Failed to create cell pair device texture!\n");
+
+  cl_mem cell_fg_img_cl = clCreateImage2D
+                          (s_context,CL_MEM_WRITE_ONLY,
+                           &cell_fg_imgfmt,cell_img_rgn[0],cell_img_rgn[1],0,
+                           NULL,&error_code);
+
+  if (error_code != CL_SUCCESS)
+    throw std::runtime_error("Failed to create cell flag device texture!\n");
+
+
+
+  if (!vfn_img_cl || !cell_pr_img_cl ||!cell_fg_img_cl)
+    throw std::runtime_error("Error: Failed to allocate device memory!\n");
 
 
   cell_coord_t x_min = m_ext_rect.left()  ,x_max = m_ext_rect.right();
@@ -152,8 +173,8 @@ void GridDataset::stop_opencl()
   //
   error_code = 0;
   error_code  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &vfn_img_cl);
-  error_code |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &cell_pairs_cl);
-  error_code |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &cell_flags_cl);
+  error_code |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &cell_pr_img_cl);
+  error_code |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &cell_fg_img_cl);
   error_code |= clSetKernelArg(kernel, 3, sizeof(cell_coord_t), &x_min);
   error_code |= clSetKernelArg(kernel, 4, sizeof(cell_coord_t), &x_max);
   error_code |= clSetKernelArg(kernel, 5, sizeof(cell_coord_t), &y_min);
@@ -165,7 +186,7 @@ void GridDataset::stop_opencl()
 
   // Get the maximum work group size for executing the kernel on the device
   //
-  size_t local[] = {8,8};
+  size_t local[] = {16,16};
 
   // Execute the kernel over the entire range of our 1d input data set
   // using the maximum number of work group items for this device
@@ -183,34 +204,74 @@ void GridDataset::stop_opencl()
     std::runtime_error("Error: Failed to execute kernel!\n");
 
 
-  // Wait for the command commands to get serviced before reading back results
+  // Wait for the command commands to get serviced before launching next kernel
   //
   clFinish(commands);
+
+
+  // Release what we dont need anymore
+  //
+  clReleaseMemObject(vfn_img_cl);
+  clReleaseKernel(kernel);
+
+  kernel = clCreateKernel(s_program, "complete_pairings", &error_code);
+  if (!kernel || error_code != CL_SUCCESS)
+    throw std::runtime_error("Error: Failed to create compute kernel!\n");
+
+
+  // Set the arguments to our compute kernel
+  //
+  error_code = 0;
+  error_code  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &cell_pr_img_cl);
+  error_code |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &cell_pr_img_cl);
+  error_code |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &cell_fg_img_cl);
+  error_code |= clSetKernelArg(kernel, 3, sizeof(cl_mem), &cell_fg_img_cl);
+  error_code |= clSetKernelArg(kernel, 4, sizeof(cell_coord_t), &x_min);
+  error_code |= clSetKernelArg(kernel, 5, sizeof(cell_coord_t), &x_max);
+  error_code |= clSetKernelArg(kernel, 6, sizeof(cell_coord_t), &y_min);
+  error_code |= clSetKernelArg(kernel, 7, sizeof(cell_coord_t), &y_max);
+
+  if (error_code != CL_SUCCESS)
+    std::runtime_error("Error: Failed to set kernel arguments! \n");
+
+  error_code = clEnqueueNDRangeKernel(commands, kernel, 2, NULL,
+                                      global, local, 0, NULL, NULL);
+
+  if (error_code)
+    std::runtime_error("Error: Failed to execute kernel!\n");
+
+  // Wait for the command commands to get serviced before copying results
+  //
+  clFinish(commands);
+
 
   // Read back the results from the device to verify the output
   //
 
-  error_code = clEnqueueReadBuffer( commands, cell_pairs_cl, CL_TRUE, 0,
-                                    sizeof(cellid_t) * num_cells,
-                                    m_cell_pairs.data(), 0, NULL, NULL );
+  error_code = clEnqueueReadImage( commands, cell_pr_img_cl, CL_TRUE,
+                                   cell_img_ogn,cell_img_rgn,0,0,
+                                   m_cell_pairs.data(),0,NULL,NULL);
 
-  error_code = clEnqueueReadBuffer( commands, cell_flags_cl, CL_TRUE, 0,
-                                    sizeof(cell_flag_t) * num_cells,
-                                    m_cell_flags.data(), 0, NULL, NULL );
+  error_code = clEnqueueReadImage( commands, cell_fg_img_cl, CL_TRUE,
+                                   cell_img_ogn,cell_img_rgn,0,0,
+                                   m_cell_flags.data(),0,NULL,NULL);
 
   if (error_code != CL_SUCCESS)
-    std::runtime_error("Error: Failed to read output array! \n");
+    std::runtime_error("Error: Failed to read output images! \n");
 
-  clReleaseMemObject(vfn_img_cl);
-  clReleaseMemObject(cell_pairs_cl);
-  clReleaseMemObject(cell_flags_cl);
+  clReleaseMemObject(cell_pr_img_cl);
+  clReleaseMemObject(cell_fg_img_cl);
   clReleaseKernel(kernel);
   clReleaseCommandQueue(commands);
 
   // Validate our results
   //
 
-  _LOG("grad assignment done");
+  t.stop();
+
+  _LOG("grad assignment done in "<<t.getElapsedTimeInMilliSec()<<" ms");
+
+
 
   collateCriticalPoints();
 }
