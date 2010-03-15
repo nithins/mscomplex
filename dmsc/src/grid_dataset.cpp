@@ -94,9 +94,9 @@ void GridDataset::stop_opencl()
     void GridDataset::assignGradients_ocl()
 {
 
-  Timer t;
+  Timer timer;
 
-  t.start();
+  timer.start();
 
   int error_code;                       // error code returned from api calls
 
@@ -114,13 +114,11 @@ void GridDataset::stop_opencl()
   if (!commands)
     throw std::runtime_error("Error: Failed to create a command commands!\n");
 
-
   // Create the compute kernel in the program we wish to run
   //
   cl_kernel kernel = clCreateKernel(s_program, "assign_gradient", &error_code);
   if (!kernel || error_code != CL_SUCCESS)
     throw std::runtime_error("Error: Failed to create compute kernel!\n");
-
 
   // Create the input and output arrays in device memory for our calculation
   //
@@ -160,7 +158,7 @@ void GridDataset::stop_opencl()
   if (error_code != CL_SUCCESS)
     throw std::runtime_error("Failed to create cell flag device texture!\n");
 
-
+  _LOG("Done tranfer Data    t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
   if (!vfn_img_cl || !cell_pr_img_cl ||!cell_fg_img_cl)
     throw std::runtime_error("Error: Failed to allocate device memory!\n");
@@ -203,11 +201,11 @@ void GridDataset::stop_opencl()
   if (error_code)
     std::runtime_error("Error: Failed to execute kernel!\n");
 
-
   // Wait for the command commands to get serviced before launching next kernel
   //
   clFinish(commands);
 
+  _LOG("Done gradient part 1 t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
   // Release what we dont need anymore
   //
@@ -217,7 +215,6 @@ void GridDataset::stop_opencl()
   kernel = clCreateKernel(s_program, "complete_pairings", &error_code);
   if (!kernel || error_code != CL_SUCCESS)
     throw std::runtime_error("Error: Failed to create compute kernel!\n");
-
 
   // Set the arguments to our compute kernel
   //
@@ -244,6 +241,7 @@ void GridDataset::stop_opencl()
   //
   clFinish(commands);
 
+  _LOG("Done gradient part 2 t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
   // Read back the results from the device to verify the output
   //
@@ -259,6 +257,8 @@ void GridDataset::stop_opencl()
   if (error_code != CL_SUCCESS)
     std::runtime_error("Error: Failed to read output images! \n");
 
+  _LOG("Done reading results t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+
   clReleaseMemObject(cell_pr_img_cl);
   clReleaseMemObject(cell_fg_img_cl);
   clReleaseKernel(kernel);
@@ -267,11 +267,7 @@ void GridDataset::stop_opencl()
   // Validate our results
   //
 
-  t.stop();
-
-  _LOG("grad assignment done in "<<t.getElapsedTimeInMilliSec()<<" ms");
-
-
+  _LOG("Done grad assignment t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
   collateCriticalPoints();
 }
