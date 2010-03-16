@@ -3,8 +3,6 @@
 #include <discreteMorseAlgorithm.h>
 #include <vector>
 
-#include <CL/cl.h>
-
 #include <timer.h>
 
 #include <QFile>
@@ -146,7 +144,7 @@ void GridDataset::stop_opencl()
 #define _GET_GLOBAL(s,l)\
 (((s)/(2*(l)))*(2*(l)) + ((((s)%(2*(l))) == 0)?(0):(2*l)))
 
-unsigned int nextPow2( unsigned int x )
+    unsigned int nextPow2( unsigned int x )
 {
   --x;
   x |= x >> 1;
@@ -164,8 +162,79 @@ void getNumBlocksAndThreads
   blocks = (n + threads - 1) / threads;
 }
 
+
+void  GridDataset::create_pair_flag_imgs_ocl()
+{
+
+  rect_size_t sz = m_ext_rect.size();
+
+  size_t cell_img_rgn[3] = {sz[0]+1,sz[1]+1,1};
+
+  int error_code;                       // error code returned from api calls
+
+  cl_image_format cell_pr_imgfmt,cell_fg_imgfmt;
+
+  cell_pr_imgfmt.image_channel_data_type = CL_SIGNED_INT16;
+  cell_pr_imgfmt.image_channel_order     = CL_RG;
+
+  cell_fg_imgfmt.image_channel_data_type = CL_UNSIGNED_INT8;
+  cell_fg_imgfmt.image_channel_order     = CL_R;
+
+  m_cell_pair_img = clCreateImage2D
+                    (s_context,CL_MEM_WRITE_ONLY,
+                     &cell_pr_imgfmt,cell_img_rgn[0],cell_img_rgn[1],0,
+                     NULL,&error_code);
+
+  if (error_code != CL_SUCCESS)
+    throw std::runtime_error("Failed to create cell pair device texture!\n");
+
+  m_cell_flag_img = clCreateImage2D
+                    (s_context,CL_MEM_WRITE_ONLY,
+                     &cell_fg_imgfmt,cell_img_rgn[0],cell_img_rgn[1],0,
+                     NULL,&error_code);
+
+  if (error_code != CL_SUCCESS)
+    throw std::runtime_error("Failed to create cell flag device texture!\n");
+
+}
+
+void  GridDataset::read_pair_flag_imgs_ocl(cl_command_queue commands)
+{
+
+  rect_size_t sz = m_ext_rect.size();
+
+  size_t cell_img_ogn[3] = {0,0,0};
+  size_t cell_img_rgn[3] = {sz[0]+1,sz[1]+1,1};
+
+  int error_code;
+
+  // Read back the results from the device to verify the output
+  //
+
+  error_code = clEnqueueReadImage( commands, m_cell_pair_img, CL_TRUE,
+                                   cell_img_ogn,cell_img_rgn,0,0,
+                                   m_cell_pairs.data(),0,NULL,NULL);
+
+  error_code = clEnqueueReadImage( commands, m_cell_flag_img, CL_TRUE,
+                                   cell_img_ogn,cell_img_rgn,0,0,
+                                   m_cell_flags.data(),0,NULL,NULL);
+
+  if (error_code != CL_SUCCESS)
+    std::runtime_error("Error: Failed to read output images! \n");
+
+
+}
+
+void  GridDataset::clear_pair_flag_imgs_ocl()
+{
+  clReleaseMemObject(m_cell_pair_img);
+  clReleaseMemObject(m_cell_flag_img);
+}
+
 void GridDataset::assignGradients_ocl()
 {
+
+  create_pair_flag_imgs_ocl();
 
   Timer timer;
 
@@ -174,9 +243,6 @@ void GridDataset::assignGradients_ocl()
   int error_code;                       // error code returned from api calls
 
   rect_size_t sz = m_ext_rect.size();
-
-  size_t cell_img_ogn[3] = {0,0,0};
-  size_t cell_img_rgn[3] = {sz[0]+1,sz[1]+1,1};
 
   size_t vert_img_rgn[3]  = {(sz[0]>>1)+1,(sz[1]>>1)+1,1};
 
@@ -209,16 +275,10 @@ void GridDataset::assignGradients_ocl()
   // Create the input and output arrays in device memory for our calculation
   //
 
-  cl_image_format vert_fn_imgfmt,cell_pr_imgfmt,cell_fg_imgfmt;
+  cl_image_format vert_fn_imgfmt;
 
   vert_fn_imgfmt.image_channel_data_type = CL_FLOAT;
   vert_fn_imgfmt.image_channel_order     = CL_R;
-
-  cell_pr_imgfmt.image_channel_data_type = CL_SIGNED_INT16;
-  cell_pr_imgfmt.image_channel_order     = CL_RG;
-
-  cell_fg_imgfmt.image_channel_data_type = CL_UNSIGNED_INT8;
-  cell_fg_imgfmt.image_channel_order     = CL_R;
 
   cl_mem vfn_img_cl = clCreateImage2D
                       (s_context,CL_MEM_READ_ONLY| CL_MEM_COPY_HOST_PTR,
@@ -228,25 +288,9 @@ void GridDataset::assignGradients_ocl()
   if (error_code != CL_SUCCESS)
     throw std::runtime_error("Failed to create cell fn device texture!\n");
 
-  cl_mem cell_pr_img_cl = clCreateImage2D
-                          (s_context,CL_MEM_WRITE_ONLY,
-                           &cell_pr_imgfmt,cell_img_rgn[0],cell_img_rgn[1],0,
-                           NULL,&error_code);
-
-  if (error_code != CL_SUCCESS)
-    throw std::runtime_error("Failed to create cell pair device texture!\n");
-
-  cl_mem cell_fg_img_cl = clCreateImage2D
-                          (s_context,CL_MEM_WRITE_ONLY,
-                           &cell_fg_imgfmt,cell_img_rgn[0],cell_img_rgn[1],0,
-                           NULL,&error_code);
-
-  if (error_code != CL_SUCCESS)
-    throw std::runtime_error("Failed to create cell flag device texture!\n");
-
   _LOG("Done tranfer Data    t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
-  if (!vfn_img_cl || !cell_pr_img_cl ||!cell_fg_img_cl)
+  if (!vfn_img_cl || !m_cell_pair_img ||!m_cell_flag_img)
     throw std::runtime_error("Error: Failed to allocate device memory!\n");
 
 
@@ -257,8 +301,8 @@ void GridDataset::assignGradients_ocl()
   //
   error_code = 0;
   error_code  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &vfn_img_cl);
-  error_code |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &cell_pr_img_cl);
-  error_code |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &cell_fg_img_cl);
+  error_code |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &m_cell_pair_img);
+  error_code |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &m_cell_flag_img);
   error_code |= clSetKernelArg(kernel, 3, sizeof(cell_coord_t), &x_min);
   error_code |= clSetKernelArg(kernel, 4, sizeof(cell_coord_t), &x_max);
   error_code |= clSetKernelArg(kernel, 5, sizeof(cell_coord_t), &y_min);
@@ -291,10 +335,10 @@ void GridDataset::assignGradients_ocl()
   // Set the arguments to our compute kernel
   //
   error_code = 0;
-  error_code  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &cell_pr_img_cl);
-  error_code |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &cell_pr_img_cl);
-  error_code |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &cell_fg_img_cl);
-  error_code |= clSetKernelArg(kernel, 3, sizeof(cl_mem), &cell_fg_img_cl);
+  error_code  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &m_cell_pair_img);
+  error_code |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &m_cell_pair_img);
+  error_code |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &m_cell_flag_img);
+  error_code |= clSetKernelArg(kernel, 3, sizeof(cl_mem), &m_cell_flag_img);
   error_code |= clSetKernelArg(kernel, 4, sizeof(cell_coord_t), &x_min);
   error_code |= clSetKernelArg(kernel, 5, sizeof(cell_coord_t), &x_max);
   error_code |= clSetKernelArg(kernel, 6, sizeof(cell_coord_t), &y_min);
@@ -315,19 +359,7 @@ void GridDataset::assignGradients_ocl()
 
   _LOG("Done gradient part 2 t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
-  // Read back the results from the device to verify the output
-  //
-
-  error_code = clEnqueueReadImage( commands, cell_pr_img_cl, CL_TRUE,
-                                   cell_img_ogn,cell_img_rgn,0,0,
-                                   m_cell_pairs.data(),0,NULL,NULL);
-
-  error_code = clEnqueueReadImage( commands, cell_fg_img_cl, CL_TRUE,
-                                   cell_img_ogn,cell_img_rgn,0,0,
-                                   m_cell_flags.data(),0,NULL,NULL);
-
-  if (error_code != CL_SUCCESS)
-    std::runtime_error("Error: Failed to read output images! \n");
+  read_pair_flag_imgs_ocl(commands);
 
   _LOG("Done reading results t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
@@ -337,6 +369,36 @@ void GridDataset::assignGradients_ocl()
   clReleaseKernel(kernel);
 
   _LOG("Done grad assignment t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+
+  collateCritcalPoints_ocl(commands);
+
+  clear_pair_flag_imgs_ocl();
+
+  clReleaseCommandQueue(commands);
+}
+
+
+void GridDataset::collateCritcalPoints_ocl(cl_command_queue commands)
+{
+  int error_code;
+
+  rect_size_t sz = m_ext_rect.size();
+
+  // Get the maximum work group size for executing the kernel on the device
+  // TODO: get a good value for each kernel
+  size_t local[] = {max_threads_2D_x,max_threads_2D_y};
+
+  // Execute the kernel over the entire range of our 1d input data set
+  // using the maximum number of work group items for this device
+  //
+  size_t global[] =
+  {
+    _GET_GLOBAL(sz[0]+1,local[0]) ,
+    _GET_GLOBAL(sz[1]+1,local[1]) ,
+  }; // should be div by 2*local
+
+  cell_coord_t x_min = m_ext_rect.left()  ,x_max = m_ext_rect.right();
+  cell_coord_t y_min = m_ext_rect.bottom(),y_max = m_ext_rect.top();
 
   // Figure out how we need to break up our collation work
   //
@@ -357,25 +419,24 @@ void GridDataset::assignGradients_ocl()
 
   typedef unsigned int counting_t;
 
-  int critpt_ct_sz = num_blocks[0]*num_blocks[1]*sizeof(counting_t);
-
-  _LOG_VAR(critpt_ct_sz);
+  int num_blocksXxY = num_blocks[0]*num_blocks[1];
 
   cl_mem critpt_ct_cl = clCreateBuffer
                         (s_context, CL_MEM_READ_WRITE,
-                        critpt_ct_sz, NULL, &error_code);
+                         num_blocksXxY*sizeof(counting_t), NULL, &error_code);
 
   if (error_code != CL_SUCCESS || !critpt_ct_cl)
     throw std::runtime_error("Failed to create crit pt ct buffer!\n");
 
-  cl_kernel collate_ker = clCreateKernel(s_coll_cps_pgm, "collate_cps_initcount", &error_code);
+  cl_kernel collate_ker = clCreateKernel(s_coll_cps_pgm,
+                                         "collate_cps_initcount", &error_code);
   if (!collate_ker || error_code != CL_SUCCESS)
     throw std::runtime_error("Failed creating collate_cps_initcount kernel!\n");
 
   // Set the arguments to our compute kernel
   //
   error_code = 0;
-  error_code  = clSetKernelArg(collate_ker, 0, sizeof(cl_mem), &cell_fg_img_cl);
+  error_code  = clSetKernelArg(collate_ker, 0, sizeof(cl_mem), &m_cell_flag_img);
   error_code |= clSetKernelArg(collate_ker, 1, sizeof(cl_mem), &critpt_ct_cl);
   error_code |= clSetKernelArg(collate_ker, 2, sizeof(cell_coord_t), &x_min);
   error_code |= clSetKernelArg(collate_ker, 3, sizeof(cell_coord_t), &x_max);
@@ -395,25 +456,28 @@ void GridDataset::assignGradients_ocl()
   //
   clFinish(commands);
 
-  counting_t critpt_collated_sz = critpt_ct_sz/sizeof(counting_t);
+  clReleaseKernel(collate_ker);
 
-  while(critpt_collated_sz > 1)
+  collate_ker = clCreateKernel(s_coll_cps_pgm, "collate_cps_reduce",
+                               &error_code);
+
+  if (!collate_ker || error_code != CL_SUCCESS)
+    throw std::runtime_error("Failed creating collate_cps_initcount kernel!\n");
+
+  counting_t oned_coll_work_sz = num_blocksXxY;
+
+  while(oned_coll_work_sz > 1)
   {
     size_t local,num_blocks;
 
-    getNumBlocksAndThreads(critpt_collated_sz,max_threads_1D,num_blocks,local);
+    getNumBlocksAndThreads(oned_coll_work_sz,max_threads_1D,num_blocks,local);
 
     size_t global = local*num_blocks;
 
-    clReleaseKernel(collate_ker);
-
-    collate_ker = clCreateKernel(s_coll_cps_pgm, "collate_cps_reduce", &error_code);
-    if (!collate_ker || error_code != CL_SUCCESS)
-      throw std::runtime_error("Failed creating collate_cps_initcount kernel!\n");
-
-    error_code = 0;
+    error_code  = 0;
     error_code  = clSetKernelArg(collate_ker, 0, sizeof(cl_mem), &critpt_ct_cl);
-    error_code |= clSetKernelArg(collate_ker, 1, sizeof(counting_t), &critpt_collated_sz);
+    error_code |= clSetKernelArg(collate_ker, 1, sizeof(counting_t),
+                                 &oned_coll_work_sz);
 
     if (error_code != CL_SUCCESS)
       std::runtime_error("Error: Failed to set kernel arguments! \n");
@@ -428,40 +492,23 @@ void GridDataset::assignGradients_ocl()
     //
     clFinish(commands);
 
-    critpt_collated_sz = (critpt_collated_sz + (local*2-1)) / (local*2);
-
+    oned_coll_work_sz = (oned_coll_work_sz + (local*2-1)) / (local*2);
   }
 
   // Copy results
   //
 
-  counting_t * reduce_res = new counting_t[critpt_ct_sz/sizeof(counting_t)];
+  counting_t * reduce_res = new counting_t[num_blocksXxY];
 
   clEnqueueReadBuffer(commands, critpt_ct_cl, CL_TRUE, 0,
-                      critpt_ct_sz,
+                      num_blocksXxY*sizeof(counting_t),
                       reduce_res, 0, NULL, NULL);
 
-  log_range(reduce_res,reduce_res + critpt_ct_sz/sizeof(counting_t),"reduce_res");
+  log_range(reduce_res,reduce_res + num_blocksXxY,"reduce_res");
 
   clReleaseMemObject(critpt_ct_cl);
-  clReleaseMemObject(cell_pr_img_cl);
-  clReleaseMemObject(cell_fg_img_cl);
-  clReleaseKernel(collate_ker);
-  clReleaseCommandQueue(commands);
-
-  // Validate our results
-  //
-
-  _LOG("Done grad assignment t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
   collateCriticalPoints();
-
-  collateCritcalPoints_ocl();
-}
-
-
-void GridDataset::collateCritcalPoints_ocl()
-{
 
 }
 

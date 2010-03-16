@@ -28,6 +28,8 @@
 
 #include <grid_mscomplex.h>
 
+#include <CL/cl.h>
+
 
 
 class GridDataset:public grid_types_t
@@ -73,6 +75,9 @@ private:
   cellflag_array_t m_cell_flags;
   cellid_list_t    m_critical_cells;
 
+  cl_mem           m_cell_pair_img;
+  cl_mem           m_cell_flag_img;
+
   pt_comp_t        m_ptcomp;
 
 public:
@@ -87,6 +92,10 @@ public:
 
   void  clear_graddata();
 
+  void  create_pair_flag_imgs_ocl();
+
+  void  clear_pair_flag_imgs_ocl();
+
   // actual algorithm work
 public:
 
@@ -94,7 +103,9 @@ public:
 
   void  assignGradients_ocl();
 
-  void  collateCritcalPoints_ocl();
+  void  read_pair_flag_imgs_ocl(cl_command_queue commands);
+
+  void  collateCritcalPoints_ocl(cl_command_queue commands);
 
   void  computeConnectivity(mscomplex_t *msgraph);
 

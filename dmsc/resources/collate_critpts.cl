@@ -4,7 +4,6 @@
 #define BLOCK_DIM 128
 
 const sampler_t cell_fg_sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
-const sampler_t critpt_ct_img_sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
 
 int is_cell_critical(int2 c, __read_only image2d_t cell_fg_img)
 {
