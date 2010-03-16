@@ -387,4 +387,3 @@ __kernel void complete_pairings
     }
   }
 }
-      

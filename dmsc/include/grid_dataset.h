@@ -94,6 +94,8 @@ public:
 
   void  assignGradients_ocl();
 
+  void  collateCritcalPoints_ocl();
+
   void  computeConnectivity(mscomplex_t *msgraph);
 
   // sub tasks of the above routines

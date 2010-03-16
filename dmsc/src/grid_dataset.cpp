@@ -13,7 +13,13 @@ typedef GridDataset::cellid_t cellid_t;
 
 cl_device_id s_device_id;             // compute device id
 cl_context s_context;                 // compute context
-cl_program s_program;                 // compute program
+cl_program s_grad_pgm;                 // compute program
+cl_program s_coll_cps_pgm;                 // compute program
+
+
+const int max_threads_1D   = 128;
+const int max_threads_2D_x = 16;
+const int max_threads_2D_y = 16;
 
 void GridDataset::init_opencl()
 {
@@ -32,57 +38,106 @@ void GridDataset::init_opencl()
   if (!s_context)
     throw std::runtime_error("Error: Failed to create a compute context!\n");
 
-  // Create the compute program from the source buffer
+  // Create the gradient assignment compute program from the source buffer
   //
 
   QFile ocl_assign_grad_src ( ":/oclsources/assigngradient.cl" );
   ocl_assign_grad_src.open(QIODevice::ReadOnly);
 
-  QByteArray KernelSource = ocl_assign_grad_src.readAll().constData();
+  QByteArray assign_grad_src = ocl_assign_grad_src.readAll().constData();
 
-  const char * KernelSource_ptr = KernelSource.constData();
+  const char * assign_grad_chptr = assign_grad_src.constData();
 
-  s_program = clCreateProgramWithSource
-              (s_context, 1, (const char **) & KernelSource_ptr,
-               NULL, &error_code);
+  s_grad_pgm = clCreateProgramWithSource
+               (s_context, 1, (const char **) & assign_grad_chptr,
+                NULL, &error_code);
 
-  if (!s_program)
-    throw std::runtime_error("Error: Failed to create compute program!\n");
+  if (!s_grad_pgm)
+    throw std::runtime_error("Failed to create assign gradient program!\n");
 
   // Build the program executable
   //
-  error_code = clBuildProgram(s_program, 0, NULL, NULL, NULL, NULL);
+  error_code = clBuildProgram(s_grad_pgm, 0, NULL, NULL, NULL, NULL);
   if (error_code != CL_SUCCESS)
   {
     size_t len;
     char buffer[2048];
 
-    clGetProgramBuildInfo(s_program, s_device_id, CL_PROGRAM_BUILD_LOG,
+    clGetProgramBuildInfo(s_grad_pgm, s_device_id, CL_PROGRAM_BUILD_LOG,
                           sizeof(buffer), buffer, &len);
 
 
     // Log the binary generated
 
     size_t bin_size;
-    clGetProgramInfo(s_program,CL_PROGRAM_BINARY_SIZES,sizeof(size_t),&bin_size,NULL);
+    clGetProgramInfo(s_grad_pgm,CL_PROGRAM_BINARY_SIZES,
+                     sizeof(size_t),&bin_size,NULL);
+
     char * ptx_buffer = new char[bin_size];
 
-    clGetProgramInfo(s_program,CL_PROGRAM_BINARIES,sizeof(ptx_buffer),&ptx_buffer,NULL);
+    clGetProgramInfo(s_grad_pgm,CL_PROGRAM_BINARIES,
+                     sizeof(ptx_buffer),&ptx_buffer,NULL);
 
-    _LOG_VAR(std::string(ptx_buffer));
+    _LOG_TO_FILE(std::string(ptx_buffer),"assigngradient.ptx");
 
     delete []ptx_buffer;
 
     throw std::runtime_error(std::string(buffer));
   }
 
+  // Create the critical point collation compute program from the source buffer
+  //
+
+  QFile ocl_create_critpts_src ( ":/oclsources/collate_critpts.cl" );
+  ocl_create_critpts_src.open(QIODevice::ReadOnly);
+
+  QByteArray collate_critpts_src = ocl_create_critpts_src.readAll().constData();
+
+  const char * collate_critpts_chptr = collate_critpts_src.constData();
+
+  s_coll_cps_pgm
+      = clCreateProgramWithSource(s_context, 1, & collate_critpts_chptr,
+                                  NULL, &error_code);
+
+  if (!s_coll_cps_pgm)
+    throw std::runtime_error("Failed to create collate critpts program!\n");
+
+  // Build the program executable
+  //
+  error_code = clBuildProgram(s_coll_cps_pgm, 0, NULL, NULL, NULL, NULL);
+  if (error_code != CL_SUCCESS)
+  {
+    size_t len;
+    char buffer[2048];
+
+    clGetProgramBuildInfo(s_coll_cps_pgm, s_device_id,
+                          CL_PROGRAM_BUILD_LOG,sizeof(buffer), buffer, &len);
+
+    // Log the binary generated
+
+    size_t bin_size;
+    clGetProgramInfo(s_coll_cps_pgm,CL_PROGRAM_BINARY_SIZES,
+                     sizeof(size_t),&bin_size,NULL);
+
+    char * ptx_buffer = new char[bin_size];
+
+    clGetProgramInfo(s_coll_cps_pgm,CL_PROGRAM_BINARIES,
+                     sizeof(ptx_buffer),&ptx_buffer,NULL);
+
+    _LOG_TO_FILE(std::string(ptx_buffer),"collatecritpts.ptx");
+
+    delete []ptx_buffer;
+
+    throw std::runtime_error(std::string(buffer));
+  }
 }
 
 void GridDataset::stop_opencl()
 {
   // Shutdown and cleanup
   //
-  clReleaseProgram(s_program);
+  clReleaseProgram(s_coll_cps_pgm);
+  clReleaseProgram(s_grad_pgm);
   clReleaseContext(s_context);
 
 }
@@ -91,7 +146,25 @@ void GridDataset::stop_opencl()
 #define _GET_GLOBAL(s,l)\
 (((s)/(2*(l)))*(2*(l)) + ((((s)%(2*(l))) == 0)?(0):(2*l)))
 
-    void GridDataset::assignGradients_ocl()
+unsigned int nextPow2( unsigned int x )
+{
+  --x;
+  x |= x >> 1;
+  x |= x >> 2;
+  x |= x >> 4;
+  x |= x >> 8;
+  x |= x >> 16;
+  return ++x;
+}
+
+void getNumBlocksAndThreads
+    (int n, int maxThreads, size_t &blocks, size_t &threads)
+{
+  threads = (n < maxThreads) ? nextPow2(n) : maxThreads;
+  blocks = (n + threads - 1) / threads;
+}
+
+void GridDataset::assignGradients_ocl()
 {
 
   Timer timer;
@@ -107,6 +180,19 @@ void GridDataset::stop_opencl()
 
   size_t vert_img_rgn[3]  = {(sz[0]>>1)+1,(sz[1]>>1)+1,1};
 
+  // Get the maximum work group size for executing the kernel on the device
+  // TODO: get a good value for each kernel
+  size_t local[] = {max_threads_2D_x,max_threads_2D_y};
+
+  // Execute the kernel over the entire range of our 1d input data set
+  // using the maximum number of work group items for this device
+  //
+  size_t global[] =
+  {
+    _GET_GLOBAL(sz[0]+1,local[0]) ,
+    _GET_GLOBAL(sz[1]+1,local[1]) ,
+  }; // should be div by 2*local
+
   // Create a command commands
   //
   cl_command_queue commands = clCreateCommandQueue
@@ -116,7 +202,7 @@ void GridDataset::stop_opencl()
 
   // Create the compute kernel in the program we wish to run
   //
-  cl_kernel kernel = clCreateKernel(s_program, "assign_gradient", &error_code);
+  cl_kernel kernel = clCreateKernel(s_grad_pgm, "assign_gradient", &error_code);
   if (!kernel || error_code != CL_SUCCESS)
     throw std::runtime_error("Error: Failed to create compute kernel!\n");
 
@@ -181,20 +267,6 @@ void GridDataset::stop_opencl()
   if (error_code != CL_SUCCESS)
     std::runtime_error("Error: Failed to set kernel arguments! \n");
 
-
-  // Get the maximum work group size for executing the kernel on the device
-  //
-  size_t local[] = {16,16};
-
-  // Execute the kernel over the entire range of our 1d input data set
-  // using the maximum number of work group items for this device
-  //
-  size_t global[] =
-  {
-    _GET_GLOBAL(sz[0]+1,local[0]) ,
-    _GET_GLOBAL(sz[1]+1,local[1]) ,
-  }; // should be div by 2*local
-
   error_code = clEnqueueNDRangeKernel(commands, kernel, 2, NULL,
                                       global, local, 0, NULL, NULL);
 
@@ -212,7 +284,7 @@ void GridDataset::stop_opencl()
   clReleaseMemObject(vfn_img_cl);
   clReleaseKernel(kernel);
 
-  kernel = clCreateKernel(s_program, "complete_pairings", &error_code);
+  kernel = clCreateKernel(s_grad_pgm, "complete_pairings", &error_code);
   if (!kernel || error_code != CL_SUCCESS)
     throw std::runtime_error("Error: Failed to create compute kernel!\n");
 
@@ -259,9 +331,122 @@ void GridDataset::stop_opencl()
 
   _LOG("Done reading results t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
+  // Release stuff we dont need anymore
+  //
+
+  clReleaseKernel(kernel);
+
+  _LOG("Done grad assignment t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+
+  // Figure out how we need to break up our collation work
+  //
+
+  size_t num_blocks[2];
+
+  getNumBlocksAndThreads((sz[0]>>1)+1,max_threads_2D_x,num_blocks[0],local[0]);
+  getNumBlocksAndThreads((sz[1]>>1)+1,max_threads_2D_y,num_blocks[1],local[1]);
+
+  _LOG_VAR(num_blocks[0]);
+  _LOG_VAR(num_blocks[1]);
+
+  global[0] = num_blocks[0]*local[0];
+  global[1] = num_blocks[1]*local[1];
+
+  // Create the collation array to hold initial and intermediate results
+  //
+
+  typedef unsigned int counting_t;
+
+  int critpt_ct_sz = num_blocks[0]*num_blocks[1]*sizeof(counting_t);
+
+  _LOG_VAR(critpt_ct_sz);
+
+  cl_mem critpt_ct_cl = clCreateBuffer
+                        (s_context, CL_MEM_READ_WRITE,
+                        critpt_ct_sz, NULL, &error_code);
+
+  if (error_code != CL_SUCCESS || !critpt_ct_cl)
+    throw std::runtime_error("Failed to create crit pt ct buffer!\n");
+
+  cl_kernel collate_ker = clCreateKernel(s_coll_cps_pgm, "collate_cps_initcount", &error_code);
+  if (!collate_ker || error_code != CL_SUCCESS)
+    throw std::runtime_error("Failed creating collate_cps_initcount kernel!\n");
+
+  // Set the arguments to our compute kernel
+  //
+  error_code = 0;
+  error_code  = clSetKernelArg(collate_ker, 0, sizeof(cl_mem), &cell_fg_img_cl);
+  error_code |= clSetKernelArg(collate_ker, 1, sizeof(cl_mem), &critpt_ct_cl);
+  error_code |= clSetKernelArg(collate_ker, 2, sizeof(cell_coord_t), &x_min);
+  error_code |= clSetKernelArg(collate_ker, 3, sizeof(cell_coord_t), &x_max);
+  error_code |= clSetKernelArg(collate_ker, 4, sizeof(cell_coord_t), &y_min);
+  error_code |= clSetKernelArg(collate_ker, 5, sizeof(cell_coord_t), &y_max);
+
+  if (error_code != CL_SUCCESS)
+    std::runtime_error("Error: Failed to set kernel arguments! \n");
+
+  error_code = clEnqueueNDRangeKernel(commands, collate_ker, 2, NULL,
+                                      global, local, 0, NULL, NULL);
+
+  if (error_code != CL_SUCCESS)
+    std::runtime_error("Error: Failed to execute kernel!\n");
+
+  // Wait for the command commands to get serviced before copying results
+  //
+  clFinish(commands);
+
+  counting_t critpt_collated_sz = critpt_ct_sz/sizeof(counting_t);
+
+  while(critpt_collated_sz > 1)
+  {
+    size_t local,num_blocks;
+
+    getNumBlocksAndThreads(critpt_collated_sz,max_threads_1D,num_blocks,local);
+
+    size_t global = local*num_blocks;
+
+    clReleaseKernel(collate_ker);
+
+    collate_ker = clCreateKernel(s_coll_cps_pgm, "collate_cps_reduce", &error_code);
+    if (!collate_ker || error_code != CL_SUCCESS)
+      throw std::runtime_error("Failed creating collate_cps_initcount kernel!\n");
+
+    error_code = 0;
+    error_code  = clSetKernelArg(collate_ker, 0, sizeof(cl_mem), &critpt_ct_cl);
+    error_code |= clSetKernelArg(collate_ker, 1, sizeof(counting_t), &critpt_collated_sz);
+
+    if (error_code != CL_SUCCESS)
+      std::runtime_error("Error: Failed to set kernel arguments! \n");
+
+    error_code = clEnqueueNDRangeKernel(commands, collate_ker, 1, NULL,
+                                        &global, &local, 0, NULL, NULL);
+
+    if (error_code != CL_SUCCESS)
+      std::runtime_error("Error: Failed to execute kernel!\n");
+
+    // Wait for the command commands to get serviced before copying results
+    //
+    clFinish(commands);
+
+    critpt_collated_sz = (critpt_collated_sz + (local*2-1)) / (local*2);
+
+  }
+
+  // Copy results
+  //
+
+  counting_t * reduce_res = new counting_t[critpt_ct_sz/sizeof(counting_t)];
+
+  clEnqueueReadBuffer(commands, critpt_ct_cl, CL_TRUE, 0,
+                      critpt_ct_sz,
+                      reduce_res, 0, NULL, NULL);
+
+  log_range(reduce_res,reduce_res + critpt_ct_sz/sizeof(counting_t),"reduce_res");
+
+  clReleaseMemObject(critpt_ct_cl);
   clReleaseMemObject(cell_pr_img_cl);
   clReleaseMemObject(cell_fg_img_cl);
-  clReleaseKernel(kernel);
+  clReleaseKernel(collate_ker);
   clReleaseCommandQueue(commands);
 
   // Validate our results
@@ -270,6 +455,14 @@ void GridDataset::stop_opencl()
   _LOG("Done grad assignment t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
   collateCriticalPoints();
+
+  collateCritcalPoints_ocl();
+}
+
+
+void GridDataset::collateCritcalPoints_ocl()
+{
+
 }
 
 void connectCps (GridDataset::mscomplex_t *msgraph,
