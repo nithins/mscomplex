@@ -218,7 +218,7 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
 (((s)/(2*(l)))*(2*(l)) + ((((s)%(2*(l))) == 0)?(0):(2*l)))
 
 
-void GridDataset::assignGradients_ocl()
+    void GridDataset::assignGradients_ocl()
 {
 
   create_pair_flag_imgs_ocl();
@@ -375,7 +375,9 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue commands)
 
   rect_size_t sz = m_ext_rect.size();
 
-  int buf_size = (sz[0]+1)*(sz[1]+1)*sizeof(uint);
+  int grid_size = (sz[0]+1)*(sz[1]+1);
+
+  int critpt_idx_buf_sz = grid_size*sizeof(uint);
 
   cl_kernel kernel;
 
@@ -395,8 +397,8 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue commands)
   cell_coord_t x_min = m_ext_rect.left()  ,x_max = m_ext_rect.right();
   cell_coord_t y_min = m_ext_rect.bottom(),y_max = m_ext_rect.top();
 
-  cl_mem prefix_sum_cl =
-      clCreateBuffer(s_context,CL_MEM_READ_WRITE,buf_size,NULL,&error_code);
+  cl_mem critpt_idx_buf =
+      clCreateBuffer(s_context,CL_MEM_READ_WRITE,critpt_idx_buf_sz,NULL,&error_code);
 
   _CHECKCL_ERR_CODE(error_code,"couldnt create prefixsum_buf");
 
@@ -410,7 +412,7 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue commands)
 
   error_code = 0;
   error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &prefix_sum_cl);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &critpt_idx_buf);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &x_min);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &x_max);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &y_min);
@@ -425,8 +427,10 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue commands)
 
   clFinish(commands);
 
-  s_pre_scan.CreatePartialSumBuffers(buf_size/sizeof(uint),s_context);
-  s_pre_scan.PreScanBuffer(prefix_sum_cl,prefix_sum_cl,buf_size/sizeof(uint),commands);
+  clReleaseKernel(kernel);
+
+  s_pre_scan.CreatePartialSumBuffers(grid_size,s_context);
+  s_pre_scan.PreScanBuffer(critpt_idx_buf,critpt_idx_buf,grid_size,commands);
   s_pre_scan.ReleasePartialSums();
 
 
@@ -434,17 +438,51 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue commands)
 
   uint crit_pt_ct = 0 ;
 
-  clEnqueueReadBuffer(commands,prefix_sum_cl,CL_TRUE,buf_size-sizeof(uint),
+  clEnqueueReadBuffer(commands,critpt_idx_buf,CL_TRUE,critpt_idx_buf_sz-sizeof(uint),
                       sizeof(uint),&crit_pt_ct,0,NULL,NULL);
 
-  collateCriticalPoints();
+  crit_pt_ct++;
 
-  if(crit_pt_ct +1 != m_critical_cells.size())
-  {
-    _LOG_VAR(crit_pt_ct);
-  }
+  uint crit_pt_id_buf_sz = crit_pt_ct*sizeof(cell_coord_t)*2;
 
-  exit(0);
+  cl_mem critpt_id_buf = clCreateBuffer(s_context,CL_MEM_READ_WRITE,
+                                         crit_pt_id_buf_sz,NULL,&error_code);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to create crit_pt_id_buf");
+
+  kernel = clCreateKernel(s_coll_cps_pgm, "collate_cps_writeids", &error_code);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to create compute kernel");
+
+  // Set the arguments to our compute kernel
+  //
+  error_code = 0;
+  error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &critpt_idx_buf);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &critpt_id_buf);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &x_min);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &x_max);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &y_min);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &y_max);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to set kernel arguments");
+
+  error_code = clEnqueueNDRangeKernel(commands, kernel, 2, NULL,
+                                      global, local, 0, NULL, NULL);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to execute kernel");
+
+  clFinish(commands);
+
+  clReleaseKernel(kernel);
+
+  m_critical_cells.resize(crit_pt_ct);
+
+  clEnqueueReadBuffer(commands,critpt_id_buf,CL_TRUE,0,
+                      crit_pt_id_buf_sz,m_critical_cells.data(),0,NULL,NULL);
+
+  clReleaseMemObject(critpt_idx_buf);
+  clReleaseMemObject(critpt_id_buf);
 }
 
 void connectCps (GridDataset::mscomplex_t *msgraph,

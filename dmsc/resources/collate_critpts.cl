@@ -34,6 +34,36 @@ __kernel void collate_cps_initcount
      critpt_ct[(bb_sz.x+1)*c.y + c.x]= is_cell_critical(c,cell_fg_img);
  }
  
+ __kernel void collate_cps_writeids
+(__read_only image2d_t  cell_fg_img, 
+ __global unsigned int* critpt_idx,
+ __global short*        critpt_cellid,
+ const cell_coord_t x_min,
+ const cell_coord_t x_max,
+ const cell_coord_t y_min,
+ const cell_coord_t y_max) 
+ {
+   
+   int2 c,bb_sz;
+   
+   bb_sz.x = x_max-x_min;
+   bb_sz.y = y_max-y_min;     
+
+   c.x = get_global_id(0);
+   c.y = get_global_id(1);   
+   
+   if(c.x <= bb_sz.x && c.y <= bb_sz.y)
+   {
+     if(is_cell_critical(c,cell_fg_img) == 1)
+     {
+       // write out cellid in the cellid array
+       unsigned int idx = critpt_idx[(bb_sz.x+1)*c.y + c.x];
+       critpt_cellid[2*idx + 0] = c.y;
+       critpt_cellid[2*idx + 1] = c.x;
+     }
+   }  
+ }
+ 
 __kernel void collate_cps_reduce(__global int*  critpt_ct,int n)
 {
     // perform first level of reduction,
