@@ -22,6 +22,38 @@ const int max_threads_1D   = 128;
 const int max_threads_2D_x = 16;
 const int max_threads_2D_y = 16;
 
+#define _CHECKCL_ERR_CODE(_ERROR,_MESSAGE)\
+if(_ERROR != CL_SUCCESS) throw std::runtime_error(_MESSAGE);
+
+void log_cl_compilation_error(cl_program &prog,const char * ptx_file_name= NULL)
+{
+  size_t len;
+  char buffer[2048];
+
+  clGetProgramBuildInfo(prog, s_device_id, CL_PROGRAM_BUILD_LOG,
+                        sizeof(buffer), buffer, &len);
+
+  if(ptx_file_name != NULL)
+  {
+    // Log the binary generated
+
+    size_t bin_size;
+    clGetProgramInfo(prog,CL_PROGRAM_BINARY_SIZES,
+                     sizeof(size_t),&bin_size,NULL);
+
+    char * ptx_buffer = new char[bin_size];
+
+    clGetProgramInfo(prog,CL_PROGRAM_BINARIES,
+                     sizeof(ptx_buffer),&ptx_buffer,NULL);
+
+    _LOG_TO_FILE(std::string(ptx_buffer),ptx_file_name);
+
+    delete []ptx_buffer;
+  }
+
+  throw std::runtime_error(buffer);
+}
+
 void GridDataset::init_opencl()
 {
 
@@ -36,8 +68,8 @@ void GridDataset::init_opencl()
   // Create a compute context
   //
   s_context = clCreateContext(0, 1, &s_device_id, NULL, NULL, &error_code);
-  if (!s_context)
-    throw std::runtime_error("Error: Failed to create a compute context!\n");
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to create a compute context");
 
   // Create the gradient assignment compute program from the source buffer
   //
@@ -53,38 +85,15 @@ void GridDataset::init_opencl()
                (s_context, 1, (const char **) & assign_grad_chptr,
                 NULL, &error_code);
 
-  if (!s_grad_pgm)
-    throw std::runtime_error("Failed to create assign gradient program!\n");
+  _CHECKCL_ERR_CODE(error_code,"Failed to create assign gradient program");
 
   // Build the program executable
   //
   error_code = clBuildProgram(s_grad_pgm, 0, NULL, NULL, NULL, NULL);
+
   if (error_code != CL_SUCCESS)
-  {
-    size_t len;
-    char buffer[2048];
+    log_cl_compilation_error(s_grad_pgm,"assign_grad.ptx");
 
-    clGetProgramBuildInfo(s_grad_pgm, s_device_id, CL_PROGRAM_BUILD_LOG,
-                          sizeof(buffer), buffer, &len);
-
-
-    // Log the binary generated
-
-    size_t bin_size;
-    clGetProgramInfo(s_grad_pgm,CL_PROGRAM_BINARY_SIZES,
-                     sizeof(size_t),&bin_size,NULL);
-
-    char * ptx_buffer = new char[bin_size];
-
-    clGetProgramInfo(s_grad_pgm,CL_PROGRAM_BINARIES,
-                     sizeof(ptx_buffer),&ptx_buffer,NULL);
-
-    _LOG_TO_FILE(std::string(ptx_buffer),"assigngradient.ptx");
-
-    delete []ptx_buffer;
-
-    throw std::runtime_error(std::string(buffer));
-  }
 
   // Create the critical point collation compute program from the source buffer
   //
@@ -100,37 +109,14 @@ void GridDataset::init_opencl()
       = clCreateProgramWithSource(s_context, 1, & collate_critpts_chptr,
                                   NULL, &error_code);
 
-  if (!s_coll_cps_pgm)
-    throw std::runtime_error("Failed to create collate critpts program!\n");
+  _CHECKCL_ERR_CODE(error_code,"Failed to create collate critpts program");
 
   // Build the program executable
   //
   error_code = clBuildProgram(s_coll_cps_pgm, 0, NULL, NULL, NULL, NULL);
   if (error_code != CL_SUCCESS)
-  {
-    size_t len;
-    char buffer[2048];
+    log_cl_compilation_error(s_coll_cps_pgm,"assign_grad.ptx");
 
-    clGetProgramBuildInfo(s_coll_cps_pgm, s_device_id,
-                          CL_PROGRAM_BUILD_LOG,sizeof(buffer), buffer, &len);
-
-    // Log the binary generated
-
-    size_t bin_size;
-    clGetProgramInfo(s_coll_cps_pgm,CL_PROGRAM_BINARY_SIZES,
-                     sizeof(size_t),&bin_size,NULL);
-
-    char * ptx_buffer = new char[bin_size];
-
-    clGetProgramInfo(s_coll_cps_pgm,CL_PROGRAM_BINARIES,
-                     sizeof(ptx_buffer),&ptx_buffer,NULL);
-
-    _LOG_TO_FILE(std::string(ptx_buffer),"collatecritpts.ptx");
-
-    delete []ptx_buffer;
-
-    throw std::runtime_error(std::string(buffer));
-  }
 
   s_pre_scan.init(s_context,s_device_id);
 }
@@ -367,10 +353,6 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
 
 }
 
-#define _CHECKCL_ERR_CODE(_ERROR,_MESSAGE)\
-if(_ERROR != CL_SUCCESS) throw std::runtime_error(_MESSAGE);
-
-
 void GridDataset::collateCritcalPoints_ocl(cl_command_queue commands)
 {
   int error_code;
@@ -448,7 +430,7 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue commands)
   uint crit_pt_id_buf_sz = crit_pt_ct*sizeof(cell_coord_t)*2;
 
   cl_mem critpt_id_buf = clCreateBuffer(s_context,CL_MEM_READ_WRITE,
-                                         crit_pt_id_buf_sz,NULL,&error_code);
+                                        crit_pt_id_buf_sz,NULL,&error_code);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create crit_pt_id_buf");
 
