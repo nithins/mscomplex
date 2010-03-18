@@ -31,43 +31,46 @@ if(NOT OPENCL_FOUND)
 	  set LD_LIBRARY_PATH to point to the sdk's lib path .. \n
 	  Ill find the rest")
 endif(NOT OPENCL_FOUND)
- 
+
 
 add_subdirectory(glapp_framework)
 
-set(dmsc_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/main.cpp 
+set(dmsc_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/main.cpp
 
-	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/discreteMorseDS.h         
-	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/discreteMorseAlgorithm.h  
-	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/discreteMorseDSRenderFuncs.h  	      
-	      
-	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/rectangle_complex.h  
-	      
-	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/quad_datamanager.h           	      
-	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/quad_datamanager.cpp  
-	      
-	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/quad_datamanager_ui.h  	      
-	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/quad_datamanager_ui.cpp  
-	      
+	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/discreteMorseDS.h
+	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/discreteMorseAlgorithm.h
+	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/discreteMorseDSRenderFuncs.h
+
+	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/rectangle_complex.h
+
+	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/quad_datamanager.h
+	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/quad_datamanager.cpp
+
+	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/quad_datamanager_ui.h
+	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/quad_datamanager_ui.cpp
+
 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/quad_dataset.h
 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/quad_dataset.cpp
-	      
+
+	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/prefix_scan.h
+	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/prefix_scan.cpp
+
 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/grid_dataset.h
 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/grid_dataset.cpp
-	      
+
 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/grid_mscomplex.h
-	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/grid_mscomplex.cpp	      
-	      
-	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/grid_datamanager.h  
+	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/grid_mscomplex.cpp
+
+	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/grid_datamanager.h
 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/grid_datamanager.cpp
-	      
-	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/grid_datamanager.h  
-	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/grid_datamanager_ui.cpp  	      
+
+	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/grid_datamanager.h
+	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/grid_datamanager_ui.cpp
 	      )
 
 file(GLOB ply_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/ply/*.c ${CMAKE_CURRENT_SOURCE_DIR}/ply/*.h)
 
-QT4_WRAP_CPP(dmsc_MOC_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/quad_datamanager_ui.h			   
+QT4_WRAP_CPP(dmsc_MOC_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/quad_datamanager_ui.h
 			   ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/quad_datamanager.h
 			   ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/grid_datamanager_ui.h
 			   ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/grid_datamanager.h)
@@ -89,7 +92,7 @@ include_directories(
   ${glapp_framework_SOURCE_DIR}/framework/include
   ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include
   ${CMAKE_CURRENT_SOURCE_DIR}/ply
-  ${CMAKE_CURRENT_BINARY_DIR}  
+  ${CMAKE_CURRENT_BINARY_DIR}
   )
 
 add_executable(${PROJECT_NAME} ${dmsc_SRCS} ${dmsc_MOC_SRCS} ${dmsc_UI_SRCS} ${dmsc_RC_SRCS} ${ply_SRCS})

@@ -1,6 +1,7 @@
 <RCC>
     <qresource prefix="/oclsources">
         <file>assigngradient.cl</file>
-	<file>collate_critpts.cl</file>
+        <file>collate_critpts.cl</file>
+        <file>scan_kernel.cl</file>
     </qresource>
 </RCC>
