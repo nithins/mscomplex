@@ -359,6 +359,8 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
 
   collateCritcalPoints_ocl(commands);
 
+  _LOG("Done cp collation    t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+
   clear_pair_flag_imgs_ocl();
 
   clReleaseCommandQueue(commands);
