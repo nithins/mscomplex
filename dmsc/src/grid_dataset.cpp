@@ -89,7 +89,7 @@ void GridDataset::init_opencl()
 
   // Build the program executable
   //
-  error_code = clBuildProgram(s_grad_pgm, 0, NULL, NULL, NULL, NULL);
+  error_code = clBuildProgram(s_grad_pgm, 0, NULL, "-cl-opt-disable", NULL, NULL);
 
   if (error_code != CL_SUCCESS)
     log_cl_compilation_error(s_grad_pgm,"assign_grad.ptx");
@@ -113,7 +113,7 @@ void GridDataset::init_opencl()
 
   // Build the program executable
   //
-  error_code = clBuildProgram(s_coll_cps_pgm, 0, NULL, NULL, NULL, NULL);
+  error_code = clBuildProgram(s_coll_cps_pgm, 0, NULL, "-cl-opt-disable", NULL, NULL);
   if (error_code != CL_SUCCESS)
     log_cl_compilation_error(s_coll_cps_pgm,"assign_grad.ptx");
 
@@ -167,7 +167,7 @@ void  GridDataset::create_pair_flag_imgs_ocl()
 
 }
 
-void  GridDataset::read_pair_flag_imgs_ocl(cl_command_queue commands)
+void  GridDataset::read_pair_flag_imgs_ocl(cl_command_queue &commands)
 {
 
   rect_size_t sz = m_ext_rect.size();
@@ -347,13 +347,15 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
 
   _LOG("Done cp collation    t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
+  assignCellOwnerExtrema_ocl(commands);
+
   clear_pair_flag_imgs_ocl();
 
   clReleaseCommandQueue(commands);
 
 }
 
-void GridDataset::collateCritcalPoints_ocl(cl_command_queue commands)
+void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
 {
   int error_code;
 
@@ -467,6 +469,144 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue commands)
 
   clReleaseMemObject(critpt_idx_buf);
   clReleaseMemObject(critpt_id_buf);
+}
+
+void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
+{
+
+  cl_kernel kernel;
+
+  rect_size_t sz = m_ext_rect.size();
+
+  size_t cell_img_rgn[3] = {sz[0]+1,sz[1]+1,1};
+  size_t cell_img_ogn[3] = {0,0,0};
+
+  int error_code;                       // error code returned from api calls
+
+  // Get the maximum work group size for executing the kernel on the device
+  // TODO: get a good value for each kernel
+  size_t local[] = {max_threads_2D_x,max_threads_2D_y};
+
+  // Execute the kernel over the entire range of our 1d input data set
+  // using the maximum number of work group items for this device
+  //
+  size_t global[] =
+  {
+    _GET_GLOBAL(sz[0]+1,local[0]) ,
+    _GET_GLOBAL(sz[1]+1,local[1]) ,
+  }; // should be div by 2*local
+
+  cell_coord_t x_min = m_ext_rect.left()  ,x_max = m_ext_rect.right();
+  cell_coord_t y_min = m_ext_rect.bottom(),y_max = m_ext_rect.top();
+
+  cl_image_format cell_own_imgfmt;
+
+  cell_own_imgfmt.image_channel_data_type = CL_SIGNED_INT16;
+  cell_own_imgfmt.image_channel_order     = CL_RG;
+
+  cl_mem cell_own_img = clCreateImage2D
+                        (s_context,CL_MEM_READ_WRITE,
+                         &cell_own_imgfmt,cell_img_rgn[0],cell_img_rgn[1],0,
+                         NULL,&error_code);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to create owner image");
+
+  kernel = clCreateKernel(s_grad_pgm, "dobfs_markowner_extrema_init", &error_code);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to create dobfs_init kernel");
+
+  // Set the arguments to our compute kernel
+  //
+  uint a = 0 ;
+
+  error_code  = 0;
+  error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &cell_own_img);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &x_min);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &x_max);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &y_min);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &y_max);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to set args for dobfs_init kernel");
+
+  error_code = clEnqueueNDRangeKernel(commands, kernel, 2, NULL,
+                                      global, local, 0, NULL, NULL);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to execute dobfs_init kernel");
+
+  clFinish(commands);
+
+  uint is_changed = 0;
+
+  kernel = clCreateKernel(s_grad_pgm, "dobfs_markowner_extrema", &error_code);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to create dobfs_markowner_extrema kernel");
+
+  uint iteration_ct = 0;
+
+  cl_mem is_changed_buf =
+      clCreateBuffer(s_context,CL_MEM_READ_WRITE,sizeof(uint)*2,NULL,&error_code);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to create is_changed_buf");
+
+  do
+  {
+    is_changed = 0;
+
+    _LOG_VAR(iteration_ct++);
+
+    error_code = clEnqueueWriteBuffer(commands,is_changed_buf,CL_TRUE,
+                                      0,sizeof(uint),&is_changed,0,NULL,NULL);
+
+    _CHECKCL_ERR_CODE(error_code,"Failed to write to is_changed_buf");
+
+    // Set the arguments to our compute kernel
+    //
+    a = 0 ;
+
+    error_code  = 0;
+    error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
+    error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_pair_img);
+    error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &cell_own_img);
+    error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &cell_own_img);
+    error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &x_min);
+    error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &x_max);
+    error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &y_min);
+    error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &y_max);
+    error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &is_changed_buf);
+
+    _CHECKCL_ERR_CODE(error_code,"Failed to set args for dobfs_markowner_extrema kernel");
+
+    error_code = clEnqueueNDRangeKernel(commands, kernel, 2, NULL,
+                                        global, local, 0, NULL, NULL);
+
+    _CHECKCL_ERR_CODE(error_code,"Failed to execute dobfs_markowner_extrema kernel");
+
+    clFinish(commands);
+
+    error_code = clEnqueueReadBuffer(commands,is_changed_buf,CL_TRUE,
+                                     0,sizeof(uint),&is_changed,0,NULL,NULL);
+
+  _LOG_VAR(is_changed);
+
+    _CHECKCL_ERR_CODE(error_code,"Failed to read to is_changed_buf");
+
+  }
+  while(is_changed == 1);
+
+  clReleaseMemObject(is_changed_buf);
+
+  cellpair_array_t cell_own;
+
+  cell_own.resize ( (boost::extents[1+sz[0]][1+sz[1]]));
+
+  error_code = clEnqueueReadImage( commands, cell_own_img, CL_TRUE,
+                                   cell_img_ogn,cell_img_rgn,0,0,
+                                   cell_own.data(),0,NULL,NULL);
+
+  for(int y = 0 ;y<= sz[1];++y)
+    log_range(cell_own[y].begin(),cell_own[y].end());
+
 }
 
 void connectCps (GridDataset::mscomplex_t *msgraph,

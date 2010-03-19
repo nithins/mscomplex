@@ -103,9 +103,11 @@ public:
 
   void  assignGradients_ocl();
 
-  void  read_pair_flag_imgs_ocl(cl_command_queue commands);
+  void  read_pair_flag_imgs_ocl(cl_command_queue &commands);
 
-  void  collateCritcalPoints_ocl(cl_command_queue commands);
+  void  collateCritcalPoints_ocl(cl_command_queue &commands);
+
+  void  assignCellOwnerExtrema_ocl(cl_command_queue &commands);
 
   void  computeConnectivity(mscomplex_t *msgraph);
 
