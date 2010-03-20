@@ -14,6 +14,7 @@ cl_device_id s_device_id;             // compute device id
 cl_context s_context;                 // compute context
 cl_program s_grad_pgm;                // compute program
 cl_program s_coll_cps_pgm;            // compute program
+cl_program s_bfs_pgm;                // compute program
 PrefixScan s_pre_scan;                // prefix scanning program
 
 
@@ -28,18 +29,21 @@ if(_ERROR != CL_SUCCESS) throw std::runtime_error(_MESSAGE);
 void compile_cl_program(std::string prog_filename,std::string header_filename,
                         std::string compile_flags,cl_program &prog,cl_context & context,cl_device_id &device_id)
 {
-  QFile prog_src_qf ( prog_filename.c_str() );
-  prog_src_qf.open(QIODevice::ReadOnly);
-
-  std::string prog_src = prog_src_qf.readAll().constData();
+  std::string prog_src;
 
   if(header_filename.size() != 0 )
   {
-    QFile head_src_qf ( prog_filename.c_str() );
+    QFile head_src_qf ( header_filename.c_str() );
     head_src_qf.open(QIODevice::ReadOnly);
 
-    prog_src += head_src_qf.readAll().constData();
+    prog_src = head_src_qf.readAll().constData();
+    prog_src += "\n";
   }
+
+  QFile prog_src_qf ( prog_filename.c_str() );
+  prog_src_qf.open(QIODevice::ReadOnly);
+
+  prog_src += prog_src_qf.readAll().constData();
 
   int error_code;               // error code returned from api calls
 
@@ -111,13 +115,20 @@ void GridDataset::init_opencl()
   // Create the gradient assignment compute program from the source buffer
   //
 
-  compile_cl_program(":/oclsources/assigngradient.cl","","-cl-opt-disable",
-                     s_grad_pgm,s_context,s_device_id);
+  compile_cl_program(":/oclsources/assigngradient.cl",":/oclsources/common_funcs.cl",
+                     "",s_grad_pgm,s_context,s_device_id);
 
   // Create the critical point collation compute program from the source buffer
   //
-  compile_cl_program(":/oclsources/collate_critpts.cl","","-cl-opt-disable",
+  compile_cl_program(":/oclsources/collate_critpts.cl","","",
                      s_coll_cps_pgm,s_context,s_device_id);
+
+  // Create the dobfs_watershed program from the source buffer
+  //
+
+  compile_cl_program(":/oclsources/bfs_watershed.cl",":/oclsources/common_funcs.cl",
+                     "-cl-opt-disable",s_bfs_pgm,s_context,s_device_id);
+
 
   s_pre_scan.init(s_context,s_device_id);
 }
@@ -502,7 +513,7 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create owner image");
 
-  kernel = clCreateKernel(s_grad_pgm, "dobfs_markowner_extrema_init", &error_code);
+  kernel = clCreateKernel(s_bfs_pgm, "dobfs_markowner_extrema_init", &error_code);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create dobfs_init kernel");
 
@@ -529,7 +540,7 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
 
   uint is_changed = 0;
 
-  kernel = clCreateKernel(s_grad_pgm, "dobfs_markowner_extrema", &error_code);
+  kernel = clCreateKernel(s_bfs_pgm, "dobfs_markowner_extrema", &error_code);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create dobfs_markowner_extrema kernel");
 
