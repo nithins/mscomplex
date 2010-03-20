@@ -131,6 +131,26 @@ int is_cell_paired(unsigned int flag)
    return (flag&0x01)?1:0;
 }
 
+int is_cell_on_true_boundry(short2 c, short2 bb_ext_sz)
+{
+  int ret = 0;
+  ret |= (c.x == 0)?(1):(0);
+  ret |= (c.y == 0)?(1):(0);
+  ret |= (c.x == bb_ext_sz.x)?(1):(0);
+  ret |= (c.y == bb_ext_sz.y)?(1):(0);
+  return ret;
+}
+
+int is_cell_outside_true_boundry(short2 c, short2 bb_ext_sz)
+{
+  int ret = 0;
+  ret |= (c.x < 0)?(1):(0);
+  ret |= (c.y < 0)?(1):(0);
+  ret |= (c.x > bb_ext_sz.x)?(1):(0);
+  ret |= (c.y > bb_ext_sz.y)?(1):(0);
+  return ret;
+}
+
 unsigned int  get_cell_flag(short2 c, __read_only image2d_t cell_fg_img)
 {  
   int2 imgcrd;

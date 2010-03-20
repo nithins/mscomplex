@@ -117,15 +117,22 @@ __kernel void assign_gradient
   short2 cf[4];
   
   int cf_ct = get_cell_cofacets(c,cf);
+
+  int c_is_tb = is_cell_on_true_boundry(c,bb_ext_sz);
   
-  for( int i = 0 ; i < cf_ct;++i)
+  for( int i = 0 ; i < 4;++i)
   {
-    cf_usable[i]  = 1;
-    cf_usable[i] &= (cf[i].x >= 0);
-    cf_usable[i] &= (cf[i].y >= 0);     
-    cf_usable[i] &= (cf[i].x <= bb_ext_sz.x);
-    cf_usable[i] &= (cf[i].y <= bb_ext_sz.y);
+    cf_usable[i] = 1;
     
+    if(i >= cf_ct)
+      cf_usable[i] &= 0;
+    
+    cf_usable[i] &= (is_cell_outside_true_boundry(cf[i],bb_ext_sz))?(0):(1);
+
+    int cf_is_tb = is_cell_on_true_boundry(cf[i],bb_ext_sz);
+
+    cf_usable[i] &= ((c_is_tb == 1) && (cf_is_tb == 0))?(0):(1);    
+
     if(cf_usable[i] == 0 )
       continue;
     
@@ -133,17 +140,20 @@ __kernel void assign_gradient
     
     int f_ct = get_cell_facets(cf[i],f);    
     
-    for( int j = 0 ; j < f_ct;++j)
-    {       
+    for( int j = 0 ; j < 4;++j)
+    {
+      if(j >= f_ct)
+        continue;
+      
       if(compareCells(c,f[j], vert_fn_img) == 1)
-        cf_usable[i] = 0; 
+        cf_usable[i] = 0;
     }
   }
    
   short2 p;
   int is_paired = 0;
   
-  for( int i = 0 ; i < cf_ct;++i)
+  for( int i = 0 ; i < 4;++i)
   {
     if(cf_usable[i] == 1) 
     {

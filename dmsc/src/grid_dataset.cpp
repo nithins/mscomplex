@@ -813,19 +813,19 @@ GridDataset::GridDataset (const rect_t &r,const rect_t &e) :
 
 void GridDataset::init()
 {
-  rect_point_t p1,p2;
-
-  p1 = m_rect.bottom_left();
-  p2 = m_rect.top_right();
-
-  p1[0] += 2;
-  p1[1] += 2;
-  p2[0] -= 2;
-  p2[1] -= 2;
-
-  m_rect = rect_t(p1,p2);
-
-  _LOG(m_rect);
+//  rect_point_t p1,p2;
+//
+//  p1 = m_rect.bottom_left();
+//  p2 = m_rect.top_right();
+//
+//  p1[0] += 2;
+//  p1[1] += 2;
+//  p2[0] -= 2;
+//  p2[1] -= 2;
+//
+//  m_rect = rect_t(p1,p2);
+//
+//  _LOG(m_rect);
 
   rect_size_t   s = m_ext_rect.size();
 
