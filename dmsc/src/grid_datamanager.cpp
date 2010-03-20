@@ -511,14 +511,17 @@ void GridDataManager::renderDataPiece ( GridDataPiece *dp ) const
     dp->ren_surf->render();
   }
 
+  glDisable ( GL_LIGHTING );
+
+  glTranslatef ( 0.0,0.02,0.0 );
+
   if ( dp->m_bShowGrad && dp->ren_grad)
   {
-    glColor3f ( 0.7,0.7,0.2 );
+    glColor3f ( 0.5,0.0,0.5 );
     dp->ren_grad->render();
 
   }
 
-  glDisable ( GL_LIGHTING );
   glPointSize ( 4.0 );
 
   if ( dp->m_bShowCps)
@@ -537,8 +540,6 @@ void GridDataManager::renderDataPiece ( GridDataPiece *dp ) const
       }
     }
   }
-
-  glTranslatef ( 0.0,0.0002,0.0 );
 
   if ( dp->m_bShowMsGraph && dp->ren_cp_conns[0] && dp->ren_cp_conns[1])
   {
@@ -843,7 +844,7 @@ void GridDataPiece::create_surf_ren()
   if(dataset == NULL)
     return;
 
-  rect_t r = dataset->get_rect();
+  rect_t r = dataset->get_ext_rect();
 
   std::vector<glutils::vertex_t>      point_locs;
   std::vector<glutils::tri_idx_t>     tri_idxs;

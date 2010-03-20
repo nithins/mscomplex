@@ -775,6 +775,18 @@ void GridDataset::init()
 {
   rect_size_t   s = m_ext_rect.size();
 
+  rect_point_t p1 = m_rect.bottom_left();
+  rect_point_t p2 = m_rect.top_right();
+
+  p1[0] += 2;
+  p1[1] += 2;
+  p2[0] -= 2;
+  p2[1] -= 2;
+
+  m_rect = rect_t(p1,p2);
+
+  _LOG(m_rect);
+
   m_vertex_fns.resize (boost::extents[1+s[0]/2][1+s[1]/2]);
   m_cell_flags.resize ( (boost::extents[1+s[0]][1+s[1]]));
   m_cell_pairs.resize ( (boost::extents[1+s[0]][1+s[1]]));
