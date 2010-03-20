@@ -316,15 +316,18 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
 
   kernel = clCreateKernel(s_grad_pgm, "complete_pairings", &error_code);
 
-  _CHECKCL_ERR_CODE(error_code,"Failed to create complete_pairings kernel")
+  _CHECKCL_ERR_CODE(error_code,"Failed to create complete_pairings kernel");
 
   // Set the arguments to our compute kernel
   //
+
+  a = 0;
+
   error_code = 0;
-  error_code  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &m_cell_pair_img);
-  error_code |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &m_cell_pair_img);
-  error_code |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &m_cell_flag_img);
-  error_code |= clSetKernelArg(kernel, 3, sizeof(cl_mem), &m_cell_flag_img);
+  error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_pair_img);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_pair_img);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &x_int_range);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &y_int_range);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &x_ext_range);
@@ -338,7 +341,7 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
   error_code = clEnqueueNDRangeKernel(commands, kernel, 2, NULL,
                                       global, local, 0, NULL, NULL);
 
-  _CHECKCL_ERR_CODE(error_code,"Failed to enqueue complete_pairings kernel")
+  _CHECKCL_ERR_CODE(error_code,"Failed to enqueue complete_pairings kernel");
 
   // Wait for the command commands to get serviced before copying results
   //
