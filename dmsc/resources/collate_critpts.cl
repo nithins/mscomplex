@@ -1,23 +1,8 @@
-#define cell_coord_t short
 #define BLOCK_DIM_X 16
 #define BLOCK_DIM_Y 16
 #define BLOCK_DIM 128
 
-const sampler_t cell_fg_sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
-
-int is_cell_critical(short2 c, __read_only image2d_t cell_fg_img)
-{  
-  int2 imgcrd;
-  
-  imgcrd.x = c.y;
-  imgcrd.y = c.x;
-  
-  uint4 val = read_imageui(cell_fg_img, cell_fg_sampler, imgcrd);
-   
-  int data = (val.x&0x00000002)?1:0;
-   
-  return data;  
-}
+// #include <common_funcs.cl>
 
 void write_crit_pt_idx_to_pr_image(short2 c, unsigned int idx,__write_only image2d_t  cell_pr_img)
 {
@@ -36,58 +21,57 @@ void write_crit_pt_idx_to_pr_image(short2 c, unsigned int idx,__write_only image
   write_imagei(cell_pr_img, imgcrd, data);
 }
 
-__kernel void collate_cps_initcount
-(__read_only   image2d_t  cell_fg_img, 
- __global unsigned int* critpt_ct,
- const cell_coord_t x_min,
- const cell_coord_t x_max,
- const cell_coord_t y_min,
- const cell_coord_t y_max)
- {
-   short2 c,bb_sz;
-   
-   bb_sz.x = x_max-x_min;
-   bb_sz.y = y_max-y_min;     
+__kernel void collate_cps_initcount(
+__read_only   image2d_t  cell_fg_img, 
+__global unsigned int* critpt_ct,
+const short2 x_ext_range,
+const short2 y_ext_range)
+{
+  short2 c,bb_ext_sz;
+  
+  bb_ext_sz.x = x_ext_range[1]-x_ext_range[0];
+  bb_ext_sz.y = y_ext_range[1]-y_ext_range[0];      
+  
+  if(get_global_id(0) > bb_ext_sz.x || 
+     get_global_id(1) > bb_ext_sz.y)
+   return;    
+  
+  c.x = get_global_id(0);
+  c.y = get_global_id(1);     
 
-   c.x = get_global_id(0);
-   c.y = get_global_id(1);   
-   
-   if(c.x <= bb_sz.x && c.y <= bb_sz.y)
-     critpt_ct[c.y*(bb_sz.x+1) + c.x]= is_cell_critical(c,cell_fg_img);
- }
+  critpt_ct[c.y*(bb_ext_sz.x+1) + c.x]= is_cell_critical(get_cell_flag(c,cell_fg_img));
+}
  
- __kernel void collate_cps_writeids
-(__read_only  image2d_t  cell_fg_img,
- __write_only image2d_t  cell_pr_img,
- __global unsigned int* critpt_idx,
- __global short*        critpt_cellid,
- const cell_coord_t x_min,
- const cell_coord_t x_max,
- const cell_coord_t y_min,
- const cell_coord_t y_max) 
- {
-   
-   short2 c,bb_sz;
-   
-   bb_sz.x = x_max-x_min;
-   bb_sz.y = y_max-y_min;     
+__kernel void collate_cps_writeids(
+__read_only  image2d_t  cell_fg_img,
+__write_only image2d_t  cell_pr_img,
+__global unsigned int* critpt_idx,
+__global short*        critpt_cellid,
+const short2 x_ext_range,
+const short2 y_ext_range)
+{
+  short2 c,bb_ext_sz;
+  
+  bb_ext_sz.x = x_ext_range[1]-x_ext_range[0];
+  bb_ext_sz.y = y_ext_range[1]-y_ext_range[0];      
+  
+  if(get_global_id(0) > bb_ext_sz.x || 
+     get_global_id(1) > bb_ext_sz.y)
+   return;    
+  
+  c.x = get_global_id(0);
+  c.y = get_global_id(1);       
 
-   c.x = get_global_id(0);
-   c.y = get_global_id(1);   
-   
-   if(c.x <= bb_sz.x && c.y <= bb_sz.y)
-   {
-     if(is_cell_critical(c,cell_fg_img) == 1)
-     {
-       // write out cellid in the cellid array
-       unsigned int idx = critpt_idx[c.y*(bb_sz.x+1) + c.x];
-       critpt_cellid[2*idx + 0] = c.x;
-       critpt_cellid[2*idx + 1] = c.y;
-       
-       write_crit_pt_idx_to_pr_image(c,idx,cell_pr_img);
-     }
-   }  
- }
+  if(is_cell_critical(get_cell_flag(c,cell_fg_img)) == 1)
+  {
+    // write out cellid in the cellid array
+    unsigned int idx = critpt_idx[c.y*(bb_ext_sz.x+1) + c.x];
+    critpt_cellid[2*idx + 0] = c.x+x_ext_range[0];
+    critpt_cellid[2*idx + 1] = c.y+y_ext_range[0];
+    
+    write_crit_pt_idx_to_pr_image(c,idx,cell_pr_img);
+  }
+}
 
 __kernel void collate_cps_reduce(__global int*  critpt_ct,int n)
 {

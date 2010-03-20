@@ -120,8 +120,8 @@ void GridDataset::init_opencl()
 
   // Create the critical point collation compute program from the source buffer
   //
-  compile_cl_program(":/oclsources/collate_critpts.cl","","",
-                     s_coll_cps_pgm,s_context,s_device_id);
+  compile_cl_program(":/oclsources/collate_critpts.cl",":/oclsources/common_funcs.cl",
+                     "",s_coll_cps_pgm,s_context,s_device_id);
 
   // Create the dobfs_watershed program from the source buffer
   //
@@ -328,8 +328,6 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_pair_img);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &x_int_range);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &y_int_range);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &x_ext_range);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &y_ext_range);
 
@@ -354,16 +352,13 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
 
   _LOG("Done reading results t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
+  collateCritcalPoints_ocl(commands);
 
-//  collateCritcalPoints_ocl(commands);
-//
-//  _LOG("Done cp collation    t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+  _LOG("Done cp collation    t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 //
 //  assignCellOwnerExtrema_ocl(commands);
 //
 //  _LOG("Done bfs flood       t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
-
-  collateCriticalPoints();
 
   clear_pair_flag_imgs_ocl();
 
@@ -375,29 +370,27 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
 {
   int error_code;
 
-  rect_size_t sz = m_ext_rect.size();
+  rect_size_t ext_sz = m_ext_rect.size();
 
-  int grid_size = (sz[0]+1)*(sz[1]+1);
+  int grid_size = (ext_sz[0]+1)*(ext_sz[1]+1);
 
-  int critpt_idx_buf_sz = grid_size*sizeof(uint);
+  int critpt_idx_buf_sz = (grid_size+1)*sizeof(uint);
 
   cl_kernel kernel;
 
-  // Get the maximum work group size for executing the kernel on the device
-  // TODO: get a good value for each kernel
   size_t local[] = {max_threads_2D_x,max_threads_2D_y};
 
-  // Execute the kernel over the entire range of our 1d input data set
-  // using the maximum number of work group items for this device
-  //
-  size_t global[] =
-  {
-    _GET_GLOBAL(sz[0]+1,local[0]) ,
-    _GET_GLOBAL(sz[1]+1,local[1]) ,
-  }; // should be div by 2*local
+  size_t global[2];
 
-  cell_coord_t x_min = m_ext_rect.left()  ,x_max = m_ext_rect.right();
-  cell_coord_t y_min = m_ext_rect.bottom(),y_max = m_ext_rect.top();
+  global[0] = _GET_GLOBAL(ext_sz[0]+1,local[0]) ;
+  global[1] = _GET_GLOBAL(ext_sz[1]+1,local[0]) ;
+
+  cl_short2 x_ext_range,y_ext_range;
+
+  x_ext_range[0] = m_ext_rect.left();
+  x_ext_range[1] = m_ext_rect.right();
+  y_ext_range[0] = m_ext_rect.bottom();
+  y_ext_range[1] = m_ext_rect.top();
 
   cl_mem critpt_idx_buf =
       clCreateBuffer(s_context,CL_MEM_READ_WRITE,critpt_idx_buf_sz,NULL,&error_code);
@@ -415,10 +408,8 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
   error_code = 0;
   error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &critpt_idx_buf);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &x_min);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &x_max);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &y_min);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &y_max);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &x_ext_range);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &y_ext_range);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to set kernel arguments");
 
@@ -431,19 +422,20 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
 
   clReleaseKernel(kernel);
 
-  s_pre_scan.CreatePartialSumBuffers(grid_size,s_context);
-  s_pre_scan.PreScanBuffer(critpt_idx_buf,critpt_idx_buf,grid_size,commands);
+  uint crit_pt_ct = 0 ;
+
+  clEnqueueWriteBuffer(commands,critpt_idx_buf,CL_TRUE,critpt_idx_buf_sz -sizeof(uint),
+                      sizeof(uint),&crit_pt_ct,0,NULL,NULL);
+
+  s_pre_scan.CreatePartialSumBuffers(grid_size+1,s_context);
+  s_pre_scan.PreScanBuffer(critpt_idx_buf,critpt_idx_buf,grid_size+1,commands);
   s_pre_scan.ReleasePartialSums();
 
 
   _CHECKCL_ERR_CODE(error_code,"Failed to execute kernel");
 
-  uint crit_pt_ct = 0 ;
-
-  clEnqueueReadBuffer(commands,critpt_idx_buf,CL_TRUE,critpt_idx_buf_sz-sizeof(uint),
+  clEnqueueReadBuffer(commands,critpt_idx_buf,CL_TRUE,critpt_idx_buf_sz -sizeof(uint),
                       sizeof(uint),&crit_pt_ct,0,NULL,NULL);
-
-  crit_pt_ct++;
 
   uint crit_pt_id_buf_sz = crit_pt_ct*sizeof(cell_coord_t)*2;
 
@@ -458,15 +450,15 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
 
   // Set the arguments to our compute kernel
   //
+  a = 0;
+
   error_code = 0;
   error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_pair_img);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &critpt_idx_buf);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_critical_cells_buf);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &x_min);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &x_max);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &y_min);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &y_max);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &x_ext_range);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &y_ext_range);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to set kernel arguments");
 
@@ -487,6 +479,7 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
   _CHECKCL_ERR_CODE(error_code,"Failed to read critpt_id_buf");
 
   clReleaseMemObject(critpt_idx_buf);
+
 }
 
 void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
@@ -1208,5 +1201,34 @@ void GridDataset::getCellCoord (cellid_t c,double &x,double &y,double &z)
   {
     y= get_cell_fn(c);
 
+  }
+}
+
+void GridDataset::log_flags()
+{
+  for (cell_coord_t y = m_ext_rect.bottom(); y <= m_ext_rect.top();y += 1)
+  {
+    for (cell_coord_t x = m_ext_rect.left(); x <= m_ext_rect.right();x += 1)
+    {
+      cellid_t c(x,y);
+
+      int val = m_cell_flags(c);
+
+      std::cout<<val<<" ";
+    }
+    std::cout<<std::endl;
+  }
+}
+
+void GridDataset::log_pairs()
+{
+  for (cell_coord_t y = m_ext_rect.bottom(); y <= m_ext_rect.top();y += 1)
+  {
+    for (cell_coord_t x = m_ext_rect.left(); x <= m_ext_rect.right();x += 1)
+    {
+      cellid_t c(x,y);
+      std::cout<<m_cell_pairs(c)<<" ";
+    }
+    std::cout<<std::endl;
   }
 }

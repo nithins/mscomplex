@@ -35,7 +35,7 @@ __kernel void dobfs_markowner_extrema_init
 
   data = read_imagei(cell_fg_img, cell_fg_sampler, imgcrd);
   
-  uchar flag = data.x; 
+  uint flag = data.x; 
   
   if(is_cell_critical(flag) == 1)
   {
@@ -83,7 +83,7 @@ __kernel void dobfs_markowner_extrema
   int2 imgcrd; int4 data;
   
   short2 p;
-  uchar flag;
+  uint flag;
   
   data.x= 0 ;data.y = 0;data.z =0;data.w=0;
   

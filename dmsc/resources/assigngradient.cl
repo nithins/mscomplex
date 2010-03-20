@@ -199,27 +199,22 @@ __kernel void complete_pairings
  __write_only image2d_t  cell_pr_img_out,
  __read_only  image2d_t  cell_fg_img,
  __write_only image2d_t  cell_fg_img_out,
-   const short2 x_int_range,
-   const short2 y_int_range,
    const short2 x_ext_range,
    const short2 y_ext_range
 )
    
 {  
-  short2 c,bb_ext_sz,bb_int_sz;
+  short2 c,bb_ext_sz;
   
   bb_ext_sz.x = x_ext_range[1]-x_ext_range[0];
-  bb_ext_sz.y = y_ext_range[1]-y_ext_range[0];    
-  
-  bb_int_sz.x = x_int_range[1]-x_int_range[0];
-  bb_int_sz.y = y_int_range[1]-y_int_range[0];    
+  bb_ext_sz.y = y_ext_range[1]-y_ext_range[0];      
   
   if(get_global_id(0) > bb_ext_sz.x || 
      get_global_id(1) > bb_ext_sz.y)
    return;    
   
-  c.x = get_global_id(0) - x_ext_range[0];
-  c.y = get_global_id(1) - y_ext_range[0] ;
+  c.x = get_global_id(0);
+  c.y = get_global_id(1);
    
    int2 ccoord;
    ccoord.y = c.x;

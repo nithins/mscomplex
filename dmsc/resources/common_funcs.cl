@@ -121,7 +121,19 @@ short get_cell_points(const short2 c,short2 *p)
   return 0;
 }
 
-int is_cell_critical(uchar flag)
+int is_cell_critical(unsigned int flag)
 {  
-   return (flag&0x00000002)?1:0;;  
+   return (flag&0x02)?1:0;  
+}
+
+unsigned int  get_cell_flag(short2 c, __read_only image2d_t cell_fg_img)
+{  
+  int2 imgcrd;
+  
+  imgcrd.x = c.y;
+  imgcrd.y = c.x;
+  
+  uint4 val = read_imageui(cell_fg_img, cell_fg_sampler, imgcrd);
+  
+  return val.x;
 }

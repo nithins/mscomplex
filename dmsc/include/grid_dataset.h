@@ -185,6 +185,10 @@ public:
     return m_ext_rect;
   }
 
+  void log_flags();
+
+  void log_pairs();
+
   // return fn at point .. averge of points for higher dims
   cell_fn_t get_cell_fn ( cellid_t c ) const;
 
