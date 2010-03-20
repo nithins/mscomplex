@@ -154,16 +154,14 @@ void  GridDataset::create_pair_flag_imgs_ocl()
                      &cell_pr_imgfmt,cell_img_rgn[0],cell_img_rgn[1],0,
                      NULL,&error_code);
 
-  if (error_code != CL_SUCCESS)
-    throw std::runtime_error("Failed to create cell pair device texture!\n");
+  _CHECKCL_ERR_CODE(error_code,"Failed to create cell pair image");
 
   m_cell_flag_img = clCreateImage2D
                     (s_context,CL_MEM_WRITE_ONLY,
                      &cell_fg_imgfmt,cell_img_rgn[0],cell_img_rgn[1],0,
                      NULL,&error_code);
 
-  if (error_code != CL_SUCCESS)
-    throw std::runtime_error("Failed to create cell flag device texture!\n");
+  _CHECKCL_ERR_CODE(error_code,"Failed to create cell flag texture");
 
 }
 
@@ -184,12 +182,13 @@ void  GridDataset::read_pair_flag_imgs_ocl(cl_command_queue &commands)
                                    cell_img_ogn,cell_img_rgn,0,0,
                                    m_cell_pairs.data(),0,NULL,NULL);
 
+  _CHECKCL_ERR_CODE(error_code,"Failed to read back cell pair image");
+
   error_code = clEnqueueReadImage( commands, m_cell_flag_img, CL_TRUE,
                                    cell_img_ogn,cell_img_rgn,0,0,
                                    m_cell_flags.data(),0,NULL,NULL);
 
-  if (error_code != CL_SUCCESS)
-    std::runtime_error("Error: Failed to read output images! \n");
+  _CHECKCL_ERR_CODE(error_code,"Failed to read back cell flag image");
 
 
 }
@@ -219,13 +218,8 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
 
   size_t vert_img_rgn[3]  = {(sz[0]>>1)+1,(sz[1]>>1)+1,1};
 
-  // Get the maximum work group size for executing the kernel on the device
-  // TODO: get a good value for each kernel
   size_t local[] = {max_threads_2D_x,max_threads_2D_y};
 
-  // Execute the kernel over the entire range of our 1d input data set
-  // using the maximum number of work group items for this device
-  //
   size_t global[] =
   {
     _GET_GLOBAL(sz[0]+1,local[0]) ,
@@ -236,14 +230,14 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
   //
   cl_command_queue commands = clCreateCommandQueue
                               (s_context, s_device_id, 0, &error_code);
-  if (!commands)
-    throw std::runtime_error("Error: Failed to create a command commands!\n");
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to create commands queue")
 
   // Create the compute kernel in the program we wish to run
   //
   cl_kernel kernel = clCreateKernel(s_grad_pgm, "assign_gradient", &error_code);
-  if (!kernel || error_code != CL_SUCCESS)
-    throw std::runtime_error("Error: Failed to create compute kernel!\n");
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to create assign gradient kernel")
 
   // Create the input and output arrays in device memory for our calculation
   //
@@ -258,14 +252,9 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
                        &vert_fn_imgfmt,vert_img_rgn[0],vert_img_rgn[1],0,
                        m_vertex_fns.data(),&error_code);
 
-  if (error_code != CL_SUCCESS)
-    throw std::runtime_error("Failed to create cell fn device texture!\n");
+  _CHECKCL_ERR_CODE(error_code,"Failed to create cell fn texture")
 
   _LOG("Done tranfer Data    t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
-
-  if (!vfn_img_cl || !m_cell_pair_img ||!m_cell_flag_img)
-    throw std::runtime_error("Error: Failed to allocate device memory!\n");
-
 
   cell_coord_t x_min = m_ext_rect.left()  ,x_max = m_ext_rect.right();
   cell_coord_t y_min = m_ext_rect.bottom(),y_max = m_ext_rect.top();
@@ -281,14 +270,12 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
   error_code |= clSetKernelArg(kernel, 5, sizeof(cell_coord_t), &y_min);
   error_code |= clSetKernelArg(kernel, 6, sizeof(cell_coord_t), &y_max);
 
-  if (error_code != CL_SUCCESS)
-    std::runtime_error("Error: Failed to set kernel arguments! \n");
+  _CHECKCL_ERR_CODE(error_code,"Failed to set assign grad kern args")
 
   error_code = clEnqueueNDRangeKernel(commands, kernel, 2, NULL,
                                       global, local, 0, NULL, NULL);
 
-  if (error_code)
-    std::runtime_error("Error: Failed to execute kernel!\n");
+  _CHECKCL_ERR_CODE(error_code,"Failed to enque assign grad kernel")
 
   // Wait for the command commands to get serviced before launching next kernel
   //
@@ -302,8 +289,8 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
   clReleaseKernel(kernel);
 
   kernel = clCreateKernel(s_grad_pgm, "complete_pairings", &error_code);
-  if (!kernel || error_code != CL_SUCCESS)
-    throw std::runtime_error("Error: Failed to create compute kernel!\n");
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to create complete_pairings kernel")
 
   // Set the arguments to our compute kernel
   //
@@ -317,14 +304,12 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
   error_code |= clSetKernelArg(kernel, 6, sizeof(cell_coord_t), &y_min);
   error_code |= clSetKernelArg(kernel, 7, sizeof(cell_coord_t), &y_max);
 
-  if (error_code != CL_SUCCESS)
-    std::runtime_error("Error: Failed to set kernel arguments! \n");
+  _CHECKCL_ERR_CODE(error_code,"Failed to set complete_pairings arguments")
 
   error_code = clEnqueueNDRangeKernel(commands, kernel, 2, NULL,
                                       global, local, 0, NULL, NULL);
 
-  if (error_code)
-    std::runtime_error("Error: Failed to execute kernel!\n");
+  _CHECKCL_ERR_CODE(error_code,"Failed to enqueue complete_pairings kernel")
 
   // Wait for the command commands to get serviced before copying results
   //
@@ -603,6 +588,8 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
   error_code = clEnqueueReadImage( commands, cell_own_img, CL_TRUE,
                                    cell_img_ogn,cell_img_rgn,0,0,
                                    cell_own.data(),0,NULL,NULL);
+
+  clReleaseMemObject(cell_own_img);
 
   for(int y = 0 ;y<= sz[1];++y)
     log_range(cell_own[y].begin(),cell_own[y].end());
