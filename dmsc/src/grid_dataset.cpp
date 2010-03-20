@@ -25,33 +25,70 @@ const int max_threads_2D_y = 16;
 #define _CHECKCL_ERR_CODE(_ERROR,_MESSAGE)\
 if(_ERROR != CL_SUCCESS) throw std::runtime_error(_MESSAGE);
 
-void log_cl_compilation_error(cl_program &prog,const char * ptx_file_name= NULL)
+void compile_cl_program(std::string prog_filename,std::string header_filename,
+                        std::string compile_flags,cl_program &prog,cl_context & context,cl_device_id &device_id)
 {
-  size_t len;
-  char buffer[2048];
+  QFile prog_src_qf ( prog_filename.c_str() );
+  prog_src_qf.open(QIODevice::ReadOnly);
 
-  clGetProgramBuildInfo(prog, s_device_id, CL_PROGRAM_BUILD_LOG,
-                        sizeof(buffer), buffer, &len);
+  std::string prog_src = prog_src_qf.readAll().constData();
 
-  if(ptx_file_name != NULL)
+  if(header_filename.size() != 0 )
   {
+    QFile head_src_qf ( prog_filename.c_str() );
+    head_src_qf.open(QIODevice::ReadOnly);
+
+    prog_src += head_src_qf.readAll().constData();
+  }
+
+  int error_code;               // error code returned from api calls
+
+  const char * prog_src_cptr= prog_src.c_str();
+
+  prog = clCreateProgramWithSource
+               (context, 1, & prog_src_cptr,
+                NULL, &error_code);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to create program");
+
+  const char * comp_flags_cptr= (compile_flags.size() >0)?compile_flags.c_str():NULL;
+
+  error_code = clBuildProgram(prog, 0, NULL, comp_flags_cptr, NULL, NULL);
+
+  if(error_code != CL_SUCCESS)
+  {
+
+    size_t len;
+    char buffer[2048];
+
+    clGetProgramBuildInfo(prog, device_id, CL_PROGRAM_BUILD_LOG,
+                          sizeof(buffer), buffer, &len);
+
     // Log the binary generated
 
     size_t bin_size;
-    clGetProgramInfo(prog,CL_PROGRAM_BINARY_SIZES,
-                     sizeof(size_t),&bin_size,NULL);
+    error_code = clGetProgramInfo(prog,CL_PROGRAM_BINARY_SIZES,
+                       sizeof(size_t),&bin_size,NULL);
 
-    char * ptx_buffer = new char[bin_size];
+    _LOG(buffer);
 
-    clGetProgramInfo(prog,CL_PROGRAM_BINARIES,
-                     sizeof(ptx_buffer),&ptx_buffer,NULL);
+    if(error_code != CL_SUCCESS)
+    {
+      char * ptx_buffer = new char[bin_size];
 
-    _LOG_TO_FILE(std::string(ptx_buffer),ptx_file_name);
+      clGetProgramInfo(prog,CL_PROGRAM_BINARIES,
+                      sizeof(ptx_buffer),&ptx_buffer,NULL);
 
-    delete []ptx_buffer;
+      std::string ptx_filename(prog_src_qf.fileName().toStdString());
+      ptx_filename += ".ptx";
+
+      _LOG_TO_FILE(std::string(ptx_buffer),ptx_filename.c_str());
+      delete []ptx_buffer;
+    }
+
+    throw std::runtime_error(buffer);
   }
 
-  throw std::runtime_error(buffer);
 }
 
 void GridDataset::init_opencl()
@@ -74,49 +111,13 @@ void GridDataset::init_opencl()
   // Create the gradient assignment compute program from the source buffer
   //
 
-  QFile ocl_assign_grad_src ( ":/oclsources/assigngradient.cl" );
-  ocl_assign_grad_src.open(QIODevice::ReadOnly);
-
-  QByteArray assign_grad_src = ocl_assign_grad_src.readAll().constData();
-
-  const char * assign_grad_chptr = assign_grad_src.constData();
-
-  s_grad_pgm = clCreateProgramWithSource
-               (s_context, 1, (const char **) & assign_grad_chptr,
-                NULL, &error_code);
-
-  _CHECKCL_ERR_CODE(error_code,"Failed to create assign gradient program");
-
-  // Build the program executable
-  //
-  error_code = clBuildProgram(s_grad_pgm, 0, NULL, "-cl-opt-disable", NULL, NULL);
-
-  if (error_code != CL_SUCCESS)
-    log_cl_compilation_error(s_grad_pgm,"assign_grad.ptx");
-
+  compile_cl_program(":/oclsources/assigngradient.cl","","-cl-opt-disable",
+                     s_grad_pgm,s_context,s_device_id);
 
   // Create the critical point collation compute program from the source buffer
   //
-
-  QFile ocl_create_critpts_src ( ":/oclsources/collate_critpts.cl" );
-  ocl_create_critpts_src.open(QIODevice::ReadOnly);
-
-  QByteArray collate_critpts_src = ocl_create_critpts_src.readAll().constData();
-
-  const char * collate_critpts_chptr = collate_critpts_src.constData();
-
-  s_coll_cps_pgm
-      = clCreateProgramWithSource(s_context, 1, & collate_critpts_chptr,
-                                  NULL, &error_code);
-
-  _CHECKCL_ERR_CODE(error_code,"Failed to create collate critpts program");
-
-  // Build the program executable
-  //
-  error_code = clBuildProgram(s_coll_cps_pgm, 0, NULL, "-cl-opt-disable", NULL, NULL);
-  if (error_code != CL_SUCCESS)
-    log_cl_compilation_error(s_coll_cps_pgm,"assign_grad.ptx");
-
+  compile_cl_program(":/oclsources/collate_critpts.cl","","-cl-opt-disable",
+                     s_coll_cps_pgm,s_context,s_device_id);
 
   s_pre_scan.init(s_context,s_device_id);
 }
