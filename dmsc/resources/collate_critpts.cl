@@ -24,21 +24,21 @@ void write_crit_pt_idx_to_pr_image(short2 c, unsigned int idx,__write_only image
 __kernel void collate_cps_initcount(
 __read_only   image2d_t  cell_fg_img, 
 __global unsigned int* critpt_ct,
-const short2 x_ext_range,
-const short2 y_ext_range)
+const short2 ext_bl,
+const short2 ext_tr
+)
 {
   short2 c,bb_ext_sz;
-  
-  bb_ext_sz.x = x_ext_range[1]-x_ext_range[0];
-  bb_ext_sz.y = y_ext_range[1]-y_ext_range[0];      
-  
-  if(get_global_id(0) > bb_ext_sz.x || 
-     get_global_id(1) > bb_ext_sz.y)
-   return;    
-  
-  c.x = get_global_id(0);
-  c.y = get_global_id(1);     
 
+  bb_ext_sz.x = ext_tr.x-ext_bl.x;
+  bb_ext_sz.y = ext_tr.y-ext_bl.y;
+
+  if(get_global_id(0) > bb_ext_sz.x ||
+     get_global_id(1) > bb_ext_sz.y)
+   return;
+
+  c.x = get_global_id(0);
+  c.y = get_global_id(1);
   critpt_ct[c.y*(bb_ext_sz.x+1) + c.x]= is_cell_critical(get_cell_flag(c,cell_fg_img));
 }
  
@@ -47,27 +47,28 @@ __read_only  image2d_t  cell_fg_img,
 __write_only image2d_t  cell_pr_img,
 __global unsigned int* critpt_idx,
 __global short*        critpt_cellid,
-const short2 x_ext_range,
-const short2 y_ext_range)
+const short2 ext_bl,
+const short2 ext_tr
+)
 {
   short2 c,bb_ext_sz;
-  
-  bb_ext_sz.x = x_ext_range[1]-x_ext_range[0];
-  bb_ext_sz.y = y_ext_range[1]-y_ext_range[0];      
-  
-  if(get_global_id(0) > bb_ext_sz.x || 
+
+  bb_ext_sz.x = ext_tr.x-ext_bl.x;
+  bb_ext_sz.y = ext_tr.y-ext_bl.y;
+
+  if(get_global_id(0) > bb_ext_sz.x ||
      get_global_id(1) > bb_ext_sz.y)
-   return;    
-  
+   return;
+
   c.x = get_global_id(0);
-  c.y = get_global_id(1);       
+  c.y = get_global_id(1);
 
   if(is_cell_critical(get_cell_flag(c,cell_fg_img)) == 1)
   {
     // write out cellid in the cellid array
     unsigned int idx = critpt_idx[c.y*(bb_ext_sz.x+1) + c.x];
-    critpt_cellid[2*idx + 0] = c.x+x_ext_range[0];
-    critpt_cellid[2*idx + 1] = c.y+y_ext_range[0];
+    critpt_cellid[2*idx + 0] = c.x+ext_bl.x;
+    critpt_cellid[2*idx + 1] = c.y+ext_bl.y;
     
     write_crit_pt_idx_to_pr_image(c,idx,cell_pr_img);
   }

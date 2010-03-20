@@ -25,14 +25,14 @@ void write_to_owner_image(short2 c,short2 data, __write_only image2d_t cell_own_
 __kernel void dobfs_markowner_extrema_init(
 __read_only image2d_t  cell_fg_img,
 __write_only image2d_t cell_own_image_out,
-const short2 x_ext_range,
-const short2 y_ext_range
+const short2 ext_bl,
+const short2 ext_tr
 )
 {
   short2 c,bb_ext_sz;
 
-  bb_ext_sz.x = x_ext_range[1]-x_ext_range[0];
-  bb_ext_sz.y = y_ext_range[1]-y_ext_range[0];
+  bb_ext_sz.x = ext_tr.x-ext_bl.x;
+  bb_ext_sz.y = ext_tr.y-ext_bl.y;
 
   if(get_global_id(0) > bb_ext_sz.x ||
      get_global_id(1) > bb_ext_sz.y)
@@ -47,8 +47,8 @@ const short2 y_ext_range
   
   if(is_cell_critical(flag) == 1)
   {
-    own.x = c.x + x_ext_range[0];
-    own.y = c.y + y_ext_range[0];
+    own.x = c.x + ext_bl.x;
+    own.y = c.y + ext_bl.y;
   }
   else
   {
@@ -65,14 +65,14 @@ __read_only image2d_t  cell_pr_img,
 __read_only image2d_t  cell_own_image_in,
 __write_only image2d_t cell_own_image_out,
 __global unsigned int * g_changed,
-const short2 x_ext_range,
-const short2 y_ext_range
+const short2 ext_bl,
+const short2 ext_tr
 )
 {
   short2 cg,bb_ext_sz,cl;
 
-  bb_ext_sz.x = x_ext_range[1]-x_ext_range[0];
-  bb_ext_sz.y = y_ext_range[1]-y_ext_range[0];
+  bb_ext_sz.x = ext_tr.x-ext_bl.x;
+  bb_ext_sz.y = ext_tr.y-ext_bl.y;
 
   cg.x = get_global_id(0);
   cg.y = get_global_id(1);
@@ -102,8 +102,8 @@ const short2 y_ext_range
   if(cg.x <= bb_ext_sz.x && cg.y<=bb_ext_sz.y)
     data = read_imagei(cell_pr_img, cell_pr_sampler, imgcrd);
 
-  p.x = data.x - x_ext_range[0];
-  p.y = data.y - y_ext_range[0];
+  p.x = data.x - ext_bl.x;
+  p.y = data.y - ext_bl.y;
 
   if(cg.x <= bb_ext_sz.x && cg.y<=bb_ext_sz.y)
     data = read_imagei(cell_fg_img, cell_fg_sampler, imgcrd);

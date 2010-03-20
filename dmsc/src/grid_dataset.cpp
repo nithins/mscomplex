@@ -282,17 +282,17 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
 
   _LOG("Done tranfer Data    t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
-  cl_short2 x_int_range,y_int_range,x_ext_range,y_ext_range;
+  cl_short2 int_bl,int_tr,ext_bl,ext_tr;
 
-  x_int_range[0] = m_rect.left();
-  x_int_range[1] = m_rect.right();
-  y_int_range[0] = m_rect.bottom();
-  y_int_range[1] = m_rect.top();
+  int_bl[0] = m_rect.left();
+  int_bl[1] = m_rect.bottom();
+  int_tr[0] = m_rect.right();
+  int_tr[1] = m_rect.top();
 
-  x_ext_range[0] = m_ext_rect.left();
-  x_ext_range[1] = m_ext_rect.right();
-  y_ext_range[0] = m_ext_rect.bottom();
-  y_ext_range[1] = m_ext_rect.top();
+  ext_bl[0] = m_ext_rect.left();
+  ext_bl[1] = m_ext_rect.bottom();
+  ext_tr[0] = m_ext_rect.right();
+  ext_tr[1] = m_ext_rect.top();
 
   // Set the arguments to our compute kernel
   //
@@ -303,10 +303,10 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
   error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &vfn_img_cl);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_pair_img);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &x_int_range);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &y_int_range);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &x_ext_range);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &y_ext_range);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &int_bl);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &int_tr);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_bl);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_tr);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to set assign grad kern args")
 
@@ -340,8 +340,8 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_pair_img);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &x_ext_range);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &y_ext_range);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_bl);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_tr);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to set complete_pairings arguments")
 
@@ -397,12 +397,12 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
   global[0] = _GET_GLOBAL(ext_sz[0]+1,local[0]) ;
   global[1] = _GET_GLOBAL(ext_sz[1]+1,local[0]) ;
 
-  cl_short2 x_ext_range,y_ext_range;
+  cl_short2 ext_bl,ext_tr;
 
-  x_ext_range[0] = m_ext_rect.left();
-  x_ext_range[1] = m_ext_rect.right();
-  y_ext_range[0] = m_ext_rect.bottom();
-  y_ext_range[1] = m_ext_rect.top();
+  ext_bl[0] = m_ext_rect.left();
+  ext_bl[1] = m_ext_rect.bottom();
+  ext_tr[0] = m_ext_rect.right();
+  ext_tr[1] = m_ext_rect.top();
 
   cl_mem critpt_idx_buf =
       clCreateBuffer(s_context,CL_MEM_READ_WRITE,critpt_idx_buf_sz,NULL,&error_code);
@@ -420,8 +420,8 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
   error_code = 0;
   error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &critpt_idx_buf);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &x_ext_range);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &y_ext_range);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_bl);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_tr);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to set kernel arguments");
 
@@ -469,8 +469,8 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_pair_img);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &critpt_idx_buf);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_critical_cells_buf);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &x_ext_range);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &y_ext_range);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_bl);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_tr);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to set kernel arguments");
 
@@ -545,12 +545,12 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
   global[0] = _GET_GLOBAL(ext_sz[0]+1,local[0]) ;
   global[1] = _GET_GLOBAL(ext_sz[1]+1,local[0]) ;
 
-  cl_short2 x_ext_range,y_ext_range;
+  cl_short2 ext_bl,ext_tr;
 
-  x_ext_range[0] = m_ext_rect.left();
-  x_ext_range[1] = m_ext_rect.right();
-  y_ext_range[0] = m_ext_rect.bottom();
-  y_ext_range[1] = m_ext_rect.top();
+  ext_bl[0] = m_ext_rect.left();
+  ext_bl[1] = m_ext_rect.bottom();
+  ext_tr[0] = m_ext_rect.right();
+  ext_tr[1] = m_ext_rect.top();
 
   cl_image_format cell_own_imgfmt;
 
@@ -575,8 +575,8 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
   error_code  = 0;
   error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &cell_own_img);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &x_ext_range);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &y_ext_range);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_bl);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_tr);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to set args for dobfs_init kernel");
 
@@ -621,8 +621,8 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
     error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &cell_own_img);
     error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &cell_own_img);
     error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &is_changed_buf);
-    error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &x_ext_range);
-    error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &y_ext_range);
+    error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_bl);
+    error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_tr);
 
 
     _CHECKCL_ERR_CODE(error_code,"Failed to set args for dobfs_markowner_extrema kernel");

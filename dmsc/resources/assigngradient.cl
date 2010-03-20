@@ -90,27 +90,27 @@ __kernel void assign_gradient
 ( __read_only  image2d_t  vert_fn_img,
   __write_only image2d_t  cell_pr_img,
   __write_only image2d_t  cell_fg_img,
-   const short2 x_int_range,
-   const short2 y_int_range,
-   const short2 x_ext_range,
-   const short2 y_ext_range
+   const short2 int_bl,
+   const short2 int_tr,
+   const short2 ext_bl,
+   const short2 ext_tr
 )
    
 {  
   short2 c,bb_ext_sz,bb_int_sz;
 
-  bb_ext_sz.x = x_ext_range[1]-x_ext_range[0];
-  bb_ext_sz.y = y_ext_range[1]-y_ext_range[0];
+  bb_ext_sz.x = ext_tr.x-ext_bl.x;
+  bb_ext_sz.y = ext_tr.y-ext_bl.y;
 
-  bb_int_sz.x = x_int_range[1]-x_int_range[0];
-  bb_int_sz.y = y_int_range[1]-y_int_range[0];
+  bb_int_sz.x = int_tr.x-int_bl.x;
+  bb_int_sz.y = int_tr.y-int_bl.y;
 
   if(get_global_id(0) > bb_int_sz.x ||
      get_global_id(1) > bb_int_sz.y)
    return;
 
-  c.x = get_global_id(0) + x_int_range[0] - x_ext_range[0];
-  c.y = get_global_id(1) + y_int_range[0] - y_ext_range[0] ;
+  c.x = get_global_id(0) + int_bl.x - ext_bl.x;
+  c.y = get_global_id(1) + int_bl.y - ext_bl.y ;
 
   int cf_usable[4];
 
@@ -178,8 +178,8 @@ __kernel void assign_gradient
   if(is_paired == 1)
   {
     int4 pr;
-    pr.x = p.x + x_ext_range[0];
-    pr.y = p.y + y_ext_range[0];
+    pr.x = p.x + ext_bl.x;
+    pr.y = p.y + ext_bl.y;
     pr.z = 0;
     pr.w = 0;
 
@@ -204,20 +204,20 @@ __kernel void assign_gradient
     write_imageui(cell_fg_img,ccoord,fg);
   }   
 }
-__kernel void complete_pairings
-(__read_only  image2d_t  cell_pr_img,
- __write_only image2d_t  cell_pr_img_out,
- __read_only  image2d_t  cell_fg_img,
- __write_only image2d_t  cell_fg_img_out,
-   const short2 x_ext_range,
-   const short2 y_ext_range
+__kernel void complete_pairings(
+__read_only  image2d_t  cell_pr_img,
+__write_only image2d_t  cell_pr_img_out,
+__read_only  image2d_t  cell_fg_img,
+__write_only image2d_t  cell_fg_img_out,
+const short2 ext_bl,
+const short2 ext_tr
 )
    
 {  
   short2 c,bb_ext_sz;
   
-  bb_ext_sz.x = x_ext_range[1]-x_ext_range[0];
-  bb_ext_sz.y = y_ext_range[1]-y_ext_range[0];      
+  bb_ext_sz.x = ext_tr.x-ext_bl.x;
+  bb_ext_sz.y = ext_tr.y-ext_bl.y;
   
   if(get_global_id(0) > bb_ext_sz.x || 
      get_global_id(1) > bb_ext_sz.y)
@@ -242,8 +242,8 @@ __kernel void complete_pairings
    int4  fp   = read_imagei(cell_pr_img, cell_pr_sampler, imgcrd);
    uint4 fflg = read_imagei(cell_fg_img, cell_fg_sampler, imgcrd);
 
-   if(fp.x == c.x + x_ext_range[0] && 
-      fp.y == c.y + y_ext_range[0] &&
+   if(fp.x == c.x + ext_bl.x &&
+      fp.y == c.y + ext_bl.y &&
       is_cell_paired(fflg.x) == 1)
     {
      p = f[i];
@@ -259,8 +259,8 @@ __kernel void complete_pairings
    imgcrd.x = c.y;
     
    int4 pr;
-   pr.x = p.x + x_ext_range[0];
-   pr.y = p.y + y_ext_range[0];
+   pr.x = p.x + ext_bl.x;
+   pr.y = p.y + ext_bl.y;
    pr.z = 0;
    pr.w = 0;
 
