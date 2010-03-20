@@ -162,3 +162,36 @@ unsigned int  get_cell_flag(short2 c, __read_only image2d_t cell_fg_img)
   
   return val.x;
 }
+
+void write_cell_flag(short2 c,unsigned int flag ,__write_only image2d_t cell_fg_img)
+{
+  int2 imgcrd;
+
+  imgcrd.x = c.y;
+  imgcrd.y = c.x;
+
+  uint4 val;
+  val.x = flag;
+  val.y = 0;
+  val.z = 0;
+  val.w = 0;
+
+  write_imageui(cell_fg_img, imgcrd,val);
+}
+
+short2  get_cell_pair(short2 c,short2 ext_bl, __read_only image2d_t cell_pr_img)
+{
+  int2 imgcrd;
+
+  imgcrd.x = c.y;
+  imgcrd.y = c.x;
+
+  int4 val = read_imagei(cell_pr_img, cell_pr_sampler, imgcrd);
+
+  short2 pr;
+
+  pr.x = val.x - ext_bl.x;
+  pr.y = val.y - ext_bl.y;
+
+  return pr;
+}

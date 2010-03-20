@@ -360,6 +360,72 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
 
   _LOG("Done gradient part 2 t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
+  kernel = clCreateKernel(s_grad_pgm, "mark_boundrypairs_critical_1", &error_code);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to create mark_boundrypairs_critical_1 kernel");
+
+  // Set the arguments to our compute kernel
+  //
+
+  a = 0;
+
+  error_code = 0;
+  error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_pair_img);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &int_bl);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &int_tr);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_bl);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_tr);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to set mark_boundrypairs_critical_1 arguments")
+
+  global[0] = _GET_GLOBAL(ext_sz[0]+1,local[0]);
+  global[1] = _GET_GLOBAL(ext_sz[1]+1,local[0]);
+
+  error_code = clEnqueueNDRangeKernel(commands, kernel, 2, NULL,
+                                      global, local, 0, NULL, NULL);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to enqueue mark_boundrypairs_critical_1 kernel");
+
+  // Wait for the command commands to get serviced before copying results
+  //
+  clFinish(commands);
+  clReleaseKernel(kernel);
+
+  kernel = clCreateKernel(s_grad_pgm, "mark_boundrypairs_critical_2", &error_code);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to create mark_boundrypairs_critical_2 kernel");
+
+  // Set the arguments to our compute kernel
+  //
+
+  a = 0;
+
+  error_code = 0;
+  error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_pair_img);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_bl);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_tr);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to set mark_boundrypairs_critical_2 arguments")
+
+  global[0] = _GET_GLOBAL(ext_sz[0]+1,local[0]);
+  global[1] = _GET_GLOBAL(ext_sz[1]+1,local[0]);
+
+  error_code = clEnqueueNDRangeKernel(commands, kernel, 2, NULL,
+                                      global, local, 0, NULL, NULL);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to enqueue mark_boundrypairs_critical_2 kernel");
+
+  // Wait for the command commands to get serviced before copying results
+  //
+  clFinish(commands);
+  clReleaseKernel(kernel);
+
+  _LOG("Done marking bc prs  t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+
   read_pair_flag_imgs_ocl(commands);
 
   _LOG("Done reading results t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
@@ -513,9 +579,9 @@ void read_n_log_cell_own_image(cl_mem img,cl_command_queue &commands,
   _CHECKCL_ERR_CODE(error_code,"Failed to read cell own image");
 
 
-  for(int x = 0;x< cell_own.size();++x)
+  for(int x = 0;x< sz[0]+1;++x)
   {
-    for(int y = 0;y< cell_own[x].size();++y)
+    for(int y = 0;y< sz[1]+1;++y)
     {
       GridDataset::cellid_t own = cell_own(GridDataset::cellid_t(x,y));
 

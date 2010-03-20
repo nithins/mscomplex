@@ -276,3 +276,101 @@ const short2 ext_tr
 
   }
 }
+
+__kernel void mark_boundrypairs_critical_1(
+__read_only  image2d_t  cell_pr_img,
+__read_only  image2d_t  cell_fg_img,
+__write_only image2d_t  cell_fg_img_out,
+const short2 int_bl,
+const short2 int_tr,
+const short2 ext_bl,
+const short2 ext_tr
+)
+
+{
+  short2 c,bb_ext_sz;
+
+  bb_ext_sz.x = ext_tr.x-ext_bl.x;
+  bb_ext_sz.y = ext_tr.y-ext_bl.y;
+
+  if(get_global_id(0) > bb_ext_sz.x ||
+     get_global_id(1) > bb_ext_sz.y)
+   return;
+
+  c.x = get_global_id(0);
+  c.y = get_global_id(1);
+
+  uint flag = get_cell_flag(c,cell_fg_img);
+
+  short2 p  = get_cell_pair(c,ext_bl,cell_pr_img);
+
+  int has_cof_in_ext = 0;
+
+  short2 cf[4];
+
+  int cf_ct = get_cell_cofacets(c,cf);
+
+  short2 rel_int_bl,rel_int_tr;
+  rel_int_bl.x = int_bl.x - ext_bl.x;
+  rel_int_bl.y = int_bl.y - ext_bl.y;
+
+  rel_int_tr.x = int_tr.x - ext_bl.x;
+  rel_int_tr.y = int_tr.y - ext_bl.y;
+
+  if(is_cell_paired(flag))
+  {
+    for(int i = 0 ;i < 4 ;++i)
+    {
+      if(i>=cf_ct)
+        continue;
+
+      if(is_cell_outside_true_boundry(cf[i],bb_ext_sz) ==1)
+        continue;
+
+      has_cof_in_ext |= (cf[i].x < rel_int_bl.x );
+      has_cof_in_ext |= (cf[i].y < rel_int_bl.y );
+      has_cof_in_ext |= (cf[i].x > rel_int_tr.x );
+      has_cof_in_ext |= (cf[i].y > rel_int_tr.y );
+    }
+
+    if(has_cof_in_ext == 1)
+    {
+      write_cell_flag(c,3,cell_fg_img_out);
+    }
+  }
+}
+
+__kernel void mark_boundrypairs_critical_2(
+__read_only  image2d_t  cell_pr_img,
+__read_only  image2d_t  cell_fg_img,
+__write_only image2d_t  cell_fg_img_out,
+const short2 ext_bl,
+const short2 ext_tr
+)
+{
+  short2 c,bb_ext_sz;
+
+  bb_ext_sz.x = ext_tr.x-ext_bl.x;
+  bb_ext_sz.y = ext_tr.y-ext_bl.y;
+
+  if(get_global_id(0) > bb_ext_sz.x ||
+     get_global_id(1) > bb_ext_sz.y)
+   return;
+
+  c.x = get_global_id(0);
+  c.y = get_global_id(1);
+
+  uint flag = get_cell_flag(c,cell_fg_img);
+
+  short2 p  = get_cell_pair(c,ext_bl,cell_pr_img);
+
+  if(is_cell_paired(flag))
+  {
+    unsigned int pflag = get_cell_flag(p,cell_fg_img);
+
+    if(is_cell_critical(pflag) && is_cell_paired(pflag))
+    {
+      write_cell_flag(c,3,cell_fg_img_out);
+    }
+  }
+}
