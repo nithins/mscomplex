@@ -98,64 +98,64 @@ __kernel void assign_gradient
    
 {  
   short2 c,bb_ext_sz,bb_int_sz;
-  
+
   bb_ext_sz.x = x_ext_range[1]-x_ext_range[0];
-  bb_ext_sz.y = y_ext_range[1]-y_ext_range[0];    
-  
+  bb_ext_sz.y = y_ext_range[1]-y_ext_range[0];
+
   bb_int_sz.x = x_int_range[1]-x_int_range[0];
-  bb_int_sz.y = y_int_range[1]-y_int_range[0];    
-  
-  if(get_global_id(0) > bb_int_sz.x || 
+  bb_int_sz.y = y_int_range[1]-y_int_range[0];
+
+  if(get_global_id(0) > bb_int_sz.x ||
      get_global_id(1) > bb_int_sz.y)
-   return;    
-  
+   return;
+
   c.x = get_global_id(0) + x_int_range[0] - x_ext_range[0];
   c.y = get_global_id(1) + y_int_range[0] - y_ext_range[0] ;
-  
+
   int cf_usable[4];
-  
+
   short2 cf[4];
-  
+
   int cf_ct = get_cell_cofacets(c,cf);
 
   int c_is_tb = is_cell_on_true_boundry(c,bb_ext_sz);
-  
+
   for( int i = 0 ; i < 4;++i)
   {
     cf_usable[i] = 1;
-    
+
     if(i >= cf_ct)
       cf_usable[i] &= 0;
-    
+
     cf_usable[i] &= (is_cell_outside_true_boundry(cf[i],bb_ext_sz))?(0):(1);
 
     int cf_is_tb = is_cell_on_true_boundry(cf[i],bb_ext_sz);
 
-    cf_usable[i] &= ((c_is_tb == 1) && (cf_is_tb == 0))?(0):(1);    
+    cf_usable[i] &= ((c_is_tb == 1) && (cf_is_tb == 0))?(0):(1);
 
     if(cf_usable[i] == 0 )
       continue;
-    
+
     short2 f[4];
-    
-    int f_ct = get_cell_facets(cf[i],f);    
-    
+
+    int f_ct = get_cell_facets(cf[i],f);
+
     for( int j = 0 ; j < 4;++j)
     {
       if(j >= f_ct)
         continue;
-      
+
       if(compareCells(c,f[j], vert_fn_img) == 1)
         cf_usable[i] = 0;
     }
   }
-   
+
   short2 p;
   int is_paired = 0;
-  
+
   for( int i = 0 ; i < 4;++i)
   {
-    if(cf_usable[i] == 1) 
+    if(cf_usable[i] == 1)
     {
       if(is_paired == 0 )
       {
@@ -167,14 +167,14 @@ __kernel void assign_gradient
         if(compareCells(cf[i],p,vert_fn_img) == 1)
           p = cf[i];
       }
-    } 
-  }  
+    }
+  }
 
-   
+
   int2 ccoord;
   ccoord.y = c.x;
   ccoord.x = c.y;
-  
+
   if(is_paired == 1)
   {
     int4 pr;
@@ -182,15 +182,15 @@ __kernel void assign_gradient
     pr.y = p.y + y_ext_range[0];
     pr.z = 0;
     pr.w = 0;
-    
+
     write_imagei(cell_pr_img,ccoord,pr);
-    
+
     uint4 fg;
     fg.x = 1;
     fg.y = 0;
     fg.z = 0;
     fg.w = 0;
-    
+
     write_imageui(cell_fg_img,ccoord,fg);
   }
   else
@@ -200,7 +200,7 @@ __kernel void assign_gradient
     fg.y = 0;
     fg.z = 0;
     fg.w = 0;
-    
+
     write_imageui(cell_fg_img,ccoord,fg);
   }   
 }

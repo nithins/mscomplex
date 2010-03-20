@@ -421,11 +421,15 @@ GridDataManager::GridDataManager
     }
     else
     {
-      mergePiecesUp_st();
+      if(m_use_ocl == false)
+      {
 
-      m_pieces[m_pieces.size()-1]->msgraph->simplify_un_simplify(num_canc);
+        mergePiecesUp_st();
 
-      mergePiecesDown_st();
+        m_pieces[m_pieces.size()-1]->msgraph->simplify_un_simplify(num_canc);
+
+        mergePiecesDown_st();
+      }
     }
 
     if(m_use_ocl)

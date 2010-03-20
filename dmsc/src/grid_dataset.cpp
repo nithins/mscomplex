@@ -161,7 +161,7 @@ void  GridDataset::create_pair_flag_imgs_ocl()
 
   rect_size_t sz = m_ext_rect.size();
 
-  size_t cell_img_rgn[3] = {sz[0]+1,sz[1]+1,1};
+  size_t cell_img_rgn[3] = {sz[1]+1,sz[0]+1,1};
 
   int error_code;                       // error code returned from api calls
 
@@ -195,7 +195,7 @@ void  GridDataset::read_pair_flag_imgs_ocl(cl_command_queue &commands)
   rect_size_t sz = m_ext_rect.size();
 
   size_t cell_img_ogn[3] = {0,0,0};
-  size_t cell_img_rgn[3] = {sz[0]+1,sz[1]+1,1};
+  size_t cell_img_rgn[3] = {sz[1]+1,sz[0]+1,1};
 
   int error_code;
 
@@ -243,7 +243,7 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
 
   rect_size_t ext_sz = m_ext_rect.size();
 
-  size_t vert_img_rgn[3]  = {(ext_sz[0]>>1)+1,(ext_sz[1]>>1)+1,1};
+  size_t vert_img_rgn[3]  = {(ext_sz[1]>>1)+1,(ext_sz[0]>>1)+1,1};
 
   size_t local[] = {max_threads_2D_x,max_threads_2D_y};
 
@@ -500,7 +500,7 @@ void read_n_log_cell_own_image(cl_mem img,cl_command_queue &commands,
 
   size_t cell_img_ogn[3] = {0,0,0};
 
-  size_t cell_img_rgn[3] = {sz[0]+1,sz[1]+1,1};
+  size_t cell_img_rgn[3] = {sz[1]+1,sz[0]+1,1};
 
   GridDataset::cellpair_array_t cell_own;
 
@@ -513,9 +513,9 @@ void read_n_log_cell_own_image(cl_mem img,cl_command_queue &commands,
   _CHECKCL_ERR_CODE(error_code,"Failed to read cell own image");
 
 
-  for(int y = 0;y< cell_own.size();++y)
+  for(int x = 0;x< cell_own.size();++x)
   {
-    for(int x = 0;x< cell_own[y].size();++x)
+    for(int y = 0;y< cell_own[x].size();++y)
     {
       GridDataset::cellid_t own = cell_own(GridDataset::cellid_t(x,y));
 
@@ -533,7 +533,7 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
 
   rect_size_t ext_sz = m_ext_rect.size();
 
-  size_t cell_img_rgn[3] = {ext_sz[0]+1,ext_sz[1]+1,1};
+  size_t cell_img_rgn[3] = {ext_sz[1]+1,ext_sz[0]+1,1};
   size_t cell_img_ogn[3] = {0,0,0};
 
   int error_code;                       // error code returned from api calls
