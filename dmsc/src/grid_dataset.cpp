@@ -334,7 +334,9 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
 
   assignCellOwnerExtrema_ocl(commands);
 
-  clear_pair_flag_imgs_ocl();
+  _LOG("Done bfs flood       t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+
+  //clear_pair_flag_imgs_ocl();
 
   clReleaseCommandQueue(commands);
 
@@ -449,8 +451,10 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
 
   m_critical_cells.resize(crit_pt_ct);
 
-  clEnqueueReadBuffer(commands,critpt_id_buf,CL_TRUE,0,
+  error_code = clEnqueueReadBuffer(commands,critpt_id_buf,CL_TRUE,0,
                       crit_pt_id_buf_sz,m_critical_cells.data(),0,NULL,NULL);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to read critpt_id_buf");
 
   clReleaseMemObject(critpt_idx_buf);
   clReleaseMemObject(critpt_id_buf);
@@ -572,8 +576,6 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
     error_code = clEnqueueReadBuffer(commands,is_changed_buf,CL_TRUE,
                                      0,sizeof(uint),&is_changed,0,NULL,NULL);
 
-  _LOG_VAR(is_changed);
-
     _CHECKCL_ERR_CODE(error_code,"Failed to read to is_changed_buf");
 
   }
@@ -591,8 +593,7 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
 
   clReleaseMemObject(cell_own_img);
 
-  for(int y = 0 ;y<= sz[1];++y)
-    log_range(cell_own[y].begin(),cell_own[y].end());
+  _CHECKCL_ERR_CODE(error_code,"Failed to cell_own_img ");
 
 }
 

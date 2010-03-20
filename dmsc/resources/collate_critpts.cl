@@ -5,13 +5,18 @@
 
 const sampler_t cell_fg_sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
 
-int is_cell_critical(int2 c, __read_only image2d_t cell_fg_img)
-{
-   uint4 val = read_imageui(cell_fg_img, cell_fg_sampler, c);
+int is_cell_critical(short2 c, __read_only image2d_t cell_fg_img)
+{  
+  int2 imgcrd;
+  
+  imgcrd.x = c.y;
+  imgcrd.y = c.x;
+  
+  uint4 val = read_imageui(cell_fg_img, cell_fg_sampler, imgcrd);
    
-   int data = (val.x&0x00000002)?1:0;
+  int data = (val.x&0x00000002)?1:0;
    
-   return data;  
+  return data;  
 }
 
 __kernel void collate_cps_initcount
@@ -22,7 +27,7 @@ __kernel void collate_cps_initcount
  const cell_coord_t y_min,
  const cell_coord_t y_max)
  {
-   int2 c,bb_sz;
+   short2 c,bb_sz;
    
    bb_sz.x = x_max-x_min;
    bb_sz.y = y_max-y_min;     
@@ -31,7 +36,7 @@ __kernel void collate_cps_initcount
    c.y = get_global_id(1);   
    
    if(c.x <= bb_sz.x && c.y <= bb_sz.y)
-     critpt_ct[(bb_sz.x+1)*c.y + c.x]= is_cell_critical(c,cell_fg_img);
+     critpt_ct[c.y*(bb_sz.x+1) + c.x]= is_cell_critical(c,cell_fg_img);
  }
  
  __kernel void collate_cps_writeids
@@ -44,7 +49,7 @@ __kernel void collate_cps_initcount
  const cell_coord_t y_max) 
  {
    
-   int2 c,bb_sz;
+   short2 c,bb_sz;
    
    bb_sz.x = x_max-x_min;
    bb_sz.y = y_max-y_min;     
@@ -57,9 +62,9 @@ __kernel void collate_cps_initcount
      if(is_cell_critical(c,cell_fg_img) == 1)
      {
        // write out cellid in the cellid array
-       unsigned int idx = critpt_idx[(bb_sz.x+1)*c.y + c.x];
-       critpt_cellid[2*idx + 0] = c.y;
-       critpt_cellid[2*idx + 1] = c.x;
+       unsigned int idx = critpt_idx[c.y*(bb_sz.x+1) + c.x];
+       critpt_cellid[2*idx + 0] = c.x;
+       critpt_cellid[2*idx + 1] = c.y;
      }
    }  
  }
