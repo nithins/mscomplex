@@ -197,6 +197,7 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
 {
   clReleaseMemObject(m_cell_pair_img);
   clReleaseMemObject(m_cell_flag_img);
+  clReleaseMemObject(m_critical_cells_buf);
 }
 
 #define _GET_GLOBAL(s,l)\
@@ -336,7 +337,7 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
 
   _LOG("Done bfs flood       t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
-  //clear_pair_flag_imgs_ocl();
+  clear_pair_flag_imgs_ocl();
 
   clReleaseCommandQueue(commands);
 
@@ -418,7 +419,7 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
 
   uint crit_pt_id_buf_sz = crit_pt_ct*sizeof(cell_coord_t)*2;
 
-  cl_mem critpt_id_buf = clCreateBuffer(s_context,CL_MEM_READ_WRITE,
+  m_critical_cells_buf = clCreateBuffer(s_context,CL_MEM_READ_WRITE,
                                         crit_pt_id_buf_sz,NULL,&error_code);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create crit_pt_id_buf");
@@ -431,8 +432,9 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
   //
   error_code = 0;
   error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_pair_img);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &critpt_idx_buf);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &critpt_id_buf);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_critical_cells_buf);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &x_min);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &x_max);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &y_min);
@@ -451,13 +453,12 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
 
   m_critical_cells.resize(crit_pt_ct);
 
-  error_code = clEnqueueReadBuffer(commands,critpt_id_buf,CL_TRUE,0,
+  error_code = clEnqueueReadBuffer(commands,m_critical_cells_buf,CL_TRUE,0,
                       crit_pt_id_buf_sz,m_critical_cells.data(),0,NULL,NULL);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to read critpt_id_buf");
 
   clReleaseMemObject(critpt_idx_buf);
-  clReleaseMemObject(critpt_id_buf);
 }
 
 void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
@@ -594,6 +595,11 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
   clReleaseMemObject(cell_own_img);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to cell_own_img ");
+
+}
+
+void GridDataset::collect_saddle_conn_ocl(cl_command_queue &commands)
+{
 
 }
 

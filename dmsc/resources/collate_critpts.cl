@@ -19,6 +19,23 @@ int is_cell_critical(short2 c, __read_only image2d_t cell_fg_img)
   return data;  
 }
 
+void write_crit_pt_idx_to_pr_image(short2 c, unsigned int idx,__write_only image2d_t  cell_pr_img)
+{
+  int4 data;
+  
+  int2 imgcrd;
+  
+  imgcrd.x = c.y;
+  imgcrd.y = c.x;
+  
+  data.x = idx&0xff;
+  data.y = (idx>>16)&0xff;
+  
+  data.z = 0; data.w = 0;
+  
+  write_imagei(cell_pr_img, imgcrd, data);
+}
+
 __kernel void collate_cps_initcount
 (__read_only   image2d_t  cell_fg_img, 
  __global unsigned int* critpt_ct,
@@ -40,7 +57,8 @@ __kernel void collate_cps_initcount
  }
  
  __kernel void collate_cps_writeids
-(__read_only image2d_t  cell_fg_img, 
+(__read_only  image2d_t  cell_fg_img,
+ __write_only image2d_t  cell_pr_img,
  __global unsigned int* critpt_idx,
  __global short*        critpt_cellid,
  const cell_coord_t x_min,
@@ -65,10 +83,12 @@ __kernel void collate_cps_initcount
        unsigned int idx = critpt_idx[c.y*(bb_sz.x+1) + c.x];
        critpt_cellid[2*idx + 0] = c.x;
        critpt_cellid[2*idx + 1] = c.y;
+       
+       write_crit_pt_idx_to_pr_image(c,idx,cell_pr_img);
      }
    }  
  }
- 
+
 __kernel void collate_cps_reduce(__global int*  critpt_ct,int n)
 {
     // perform first level of reduction,

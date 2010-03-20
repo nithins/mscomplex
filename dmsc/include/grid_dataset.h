@@ -77,6 +77,7 @@ private:
 
   cl_mem           m_cell_pair_img;
   cl_mem           m_cell_flag_img;
+  cl_mem           m_critical_cells_buf;
 
   pt_comp_t        m_ptcomp;
 
@@ -108,6 +109,8 @@ public:
   void  collateCritcalPoints_ocl(cl_command_queue &commands);
 
   void  assignCellOwnerExtrema_ocl(cl_command_queue &commands);
+
+  void  collect_saddle_conn_ocl(cl_command_queue &commands);
 
   void  computeConnectivity(mscomplex_t *msgraph);
 
