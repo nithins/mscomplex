@@ -162,16 +162,16 @@ void  GridDataset::create_pair_flag_imgs_ocl()
   cell_fg_imgfmt.image_channel_order     = CL_R;
 
   m_cell_pair_img = clCreateImage2D
-                    (s_context,CL_MEM_WRITE_ONLY,
+                    (s_context,CL_MEM_READ_WRITE|CL_MEM_COPY_HOST_PTR,
                      &cell_pr_imgfmt,cell_img_rgn[0],cell_img_rgn[1],0,
-                     NULL,&error_code);
+                     m_cell_pairs.data(),&error_code);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create cell pair image");
 
   m_cell_flag_img = clCreateImage2D
-                    (s_context,CL_MEM_WRITE_ONLY,
+                    (s_context,CL_MEM_READ_WRITE|CL_MEM_COPY_HOST_PTR,
                      &cell_fg_imgfmt,cell_img_rgn[0],cell_img_rgn[1],0,
-                     NULL,&error_code);
+                     m_cell_flags.data(),&error_code);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create cell flag texture");
 
@@ -227,17 +227,18 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
 
   int error_code;                       // error code returned from api calls
 
-  rect_size_t sz = m_ext_rect.size();
+  rect_size_t int_sz = m_rect.size();
 
-  size_t vert_img_rgn[3]  = {(sz[0]>>1)+1,(sz[1]>>1)+1,1};
+  rect_size_t ext_sz = m_ext_rect.size();
+
+  size_t vert_img_rgn[3]  = {(ext_sz[0]>>1)+1,(ext_sz[1]>>1)+1,1};
 
   size_t local[] = {max_threads_2D_x,max_threads_2D_y};
 
-  size_t global[] =
-  {
-    _GET_GLOBAL(sz[0]+1,local[0]) ,
-    _GET_GLOBAL(sz[1]+1,local[1]) ,
-  }; // should be div by 2*local
+  size_t global[2];
+
+  global[0] = _GET_GLOBAL(int_sz[0]+1,local[0]) ;
+  global[1] = _GET_GLOBAL(int_sz[1]+1,local[0]) ;
 
   // Create a command commands
   //
@@ -269,19 +270,31 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
 
   _LOG("Done tranfer Data    t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
-  cell_coord_t x_min = m_ext_rect.left()  ,x_max = m_ext_rect.right();
-  cell_coord_t y_min = m_ext_rect.bottom(),y_max = m_ext_rect.top();
+  cl_short2 x_int_range,y_int_range,x_ext_range,y_ext_range;
+
+  x_int_range[0] = m_rect.left();
+  x_int_range[1] = m_rect.right();
+  y_int_range[0] = m_rect.bottom();
+  y_int_range[1] = m_rect.top();
+
+  x_ext_range[0] = m_ext_rect.left();
+  x_ext_range[1] = m_ext_rect.right();
+  y_ext_range[0] = m_ext_rect.bottom();
+  y_ext_range[1] = m_ext_rect.top();
 
   // Set the arguments to our compute kernel
   //
+
+  unsigned int a = 0;
+
   error_code = 0;
-  error_code  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &vfn_img_cl);
-  error_code |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &m_cell_pair_img);
-  error_code |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &m_cell_flag_img);
-  error_code |= clSetKernelArg(kernel, 3, sizeof(cell_coord_t), &x_min);
-  error_code |= clSetKernelArg(kernel, 4, sizeof(cell_coord_t), &x_max);
-  error_code |= clSetKernelArg(kernel, 5, sizeof(cell_coord_t), &y_min);
-  error_code |= clSetKernelArg(kernel, 6, sizeof(cell_coord_t), &y_max);
+  error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &vfn_img_cl);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_pair_img);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &x_int_range);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &y_int_range);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &x_ext_range);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &y_ext_range);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to set assign grad kern args")
 
@@ -312,12 +325,15 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
   error_code |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &m_cell_pair_img);
   error_code |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &m_cell_flag_img);
   error_code |= clSetKernelArg(kernel, 3, sizeof(cl_mem), &m_cell_flag_img);
-  error_code |= clSetKernelArg(kernel, 4, sizeof(cell_coord_t), &x_min);
-  error_code |= clSetKernelArg(kernel, 5, sizeof(cell_coord_t), &x_max);
-  error_code |= clSetKernelArg(kernel, 6, sizeof(cell_coord_t), &y_min);
-  error_code |= clSetKernelArg(kernel, 7, sizeof(cell_coord_t), &y_max);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &x_int_range);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &y_int_range);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &x_ext_range);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &y_ext_range);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to set complete_pairings arguments")
+
+  global[0] = _GET_GLOBAL(ext_sz[0]+1,local[0]) ;
+  global[1] = _GET_GLOBAL(ext_sz[1]+1,local[0]) ;
 
   error_code = clEnqueueNDRangeKernel(commands, kernel, 2, NULL,
                                       global, local, 0, NULL, NULL);
@@ -327,6 +343,7 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
   // Wait for the command commands to get serviced before copying results
   //
   clFinish(commands);
+  clReleaseKernel(kernel);
 
   _LOG("Done gradient part 2 t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
@@ -334,20 +351,16 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
 
   _LOG("Done reading results t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
-  // Release stuff we dont need anymore
-  //
 
-  clReleaseKernel(kernel);
+//  collateCritcalPoints_ocl(commands);
+//
+//  _LOG("Done cp collation    t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+//
+//  assignCellOwnerExtrema_ocl(commands);
+//
+//  _LOG("Done bfs flood       t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
-  _LOG("Done grad assignment t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
-
-  collateCritcalPoints_ocl(commands);
-
-  _LOG("Done cp collation    t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
-
-  assignCellOwnerExtrema_ocl(commands);
-
-  _LOG("Done bfs flood       t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+  collateCriticalPoints();
 
   clear_pair_flag_imgs_ocl();
 
@@ -773,10 +786,10 @@ GridDataset::GridDataset (const rect_t &r,const rect_t &e) :
 
 void GridDataset::init()
 {
-  rect_size_t   s = m_ext_rect.size();
+  rect_point_t p1,p2;
 
-  rect_point_t p1 = m_rect.bottom_left();
-  rect_point_t p2 = m_rect.top_right();
+  p1 = m_rect.bottom_left();
+  p2 = m_rect.top_right();
 
   p1[0] += 2;
   p1[1] += 2;
@@ -786,6 +799,8 @@ void GridDataset::init()
   m_rect = rect_t(p1,p2);
 
   _LOG(m_rect);
+
+  rect_size_t   s = m_ext_rect.size();
 
   m_vertex_fns.resize (boost::extents[1+s[0]/2][1+s[1]/2]);
   m_cell_flags.resize ( (boost::extents[1+s[0]][1+s[1]]));
