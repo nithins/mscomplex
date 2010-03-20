@@ -126,6 +126,11 @@ int is_cell_critical(unsigned int flag)
    return (flag&0x02)?1:0;  
 }
 
+int is_cell_paired(unsigned int flag)
+{
+   return (flag&0x01)?1:0;
+}
+
 unsigned int  get_cell_flag(short2 c, __read_only image2d_t cell_fg_img)
 {  
   int2 imgcrd;
