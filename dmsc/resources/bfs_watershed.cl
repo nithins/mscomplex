@@ -5,79 +5,82 @@
 
 const sampler_t cell_own_sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
 
-__kernel void dobfs_markowner_extrema_init
-(__read_only image2d_t  cell_fg_img,
- __write_only image2d_t cell_own_image_out,
- const cell_coord_t x_min,
- const cell_coord_t x_max,
- const cell_coord_t y_min,
- const cell_coord_t y_max)
- {
-  short2 bb_sz;
+void write_to_owner_image(short2 c,short2 data, __write_only image2d_t cell_own_image)
+{
+  int2 imgcrd;
 
-  bb_sz.x = x_max-x_min;
-  bb_sz.y = y_max-y_min;  
-  
-  short2 c;
-  
+  imgcrd.x = c.y;
+  imgcrd.y = c.x;
+
+  int4 data_val;
+
+  data_val.x = data.x;
+  data_val.y = data.y;
+  data_val.z = 0;
+  data_val.w = 0;
+
+  write_imagei(cell_own_image, imgcrd,data_val);
+}
+
+__kernel void dobfs_markowner_extrema_init(
+__read_only image2d_t  cell_fg_img,
+__write_only image2d_t cell_own_image_out,
+const short2 x_ext_range,
+const short2 y_ext_range
+)
+{
+  short2 c,bb_ext_sz;
+
+  bb_ext_sz.x = x_ext_range[1]-x_ext_range[0];
+  bb_ext_sz.y = y_ext_range[1]-y_ext_range[0];
+
+  if(get_global_id(0) > bb_ext_sz.x ||
+     get_global_id(1) > bb_ext_sz.y)
+   return;
+
   c.x = get_global_id(0);
   c.y = get_global_id(1);
   
-  if(c.x > bb_sz.x || c.y > bb_sz.y)
-    return;
-  
-  int2 imgcrd; int4 data;
-  
-  data.x= 0 ;data.y = 0;data.z =0;data.w=0;
-  
-  imgcrd.y = c.x;
-  imgcrd.x = c.y;  
+  uint flag = get_cell_flag(c,cell_fg_img);
 
-  data = read_imagei(cell_fg_img, cell_fg_sampler, imgcrd);
-  
-  uint flag = data.x; 
+  short2 own;
   
   if(is_cell_critical(flag) == 1)
   {
-    data.x = c.x;
-    data.y = c.y;
+    own.x = c.x + x_ext_range[0];
+    own.y = c.y + y_ext_range[0];
   }
   else
   {
-    data.x = -1;
-    data.y = -1;
+    own.x = -1;
+    own.y = -1;
   }
   
-  write_imagei(cell_own_image_out, imgcrd,data); 
+  write_to_owner_image(c,own,cell_own_image_out);
+}
 
- }
-
-__kernel void dobfs_markowner_extrema
-(__read_only image2d_t  cell_fg_img, 
- __read_only image2d_t  cell_pr_img,
- __read_only image2d_t  cell_own_image_in,
- __write_only image2d_t cell_own_image_out,
- const cell_coord_t x_min,
- const cell_coord_t x_max,
- const cell_coord_t y_min,
- const cell_coord_t y_max,
- __global unsigned int * g_changed
- )
+__kernel void dobfs_markowner_extrema(
+__read_only image2d_t  cell_fg_img,
+__read_only image2d_t  cell_pr_img,
+__read_only image2d_t  cell_own_image_in,
+__write_only image2d_t cell_own_image_out,
+__global unsigned int * g_changed,
+const short2 x_ext_range,
+const short2 y_ext_range
+)
 {
-  
-  short2 bb_sz;
+  short2 cg,bb_ext_sz,cl;
 
-  bb_sz.x = x_max-x_min;
-  bb_sz.y = y_max-y_min;  
+  bb_ext_sz.x = x_ext_range[1]-x_ext_range[0];
+  bb_ext_sz.y = y_ext_range[1]-y_ext_range[0];
 
-  __local short2 cell_own_shr[BLOCK_DIM_X+2][BLOCK_DIM_Y+2];  
-  short2 cg,cl;
-  
   cg.x = get_global_id(0);
   cg.y = get_global_id(1);
   
   cl.x = get_local_id(0);
-  cl.y = get_local_id(1);  
+  cl.y = get_local_id(1);
+
+  __local short2 cell_own_shr[BLOCK_DIM_X+2][BLOCK_DIM_Y+2];
   
 //   first global access  
   int2 imgcrd; int4 data;
@@ -90,19 +93,19 @@ __kernel void dobfs_markowner_extrema
   imgcrd.y = cg.x;
   imgcrd.x = cg.y;
   
-  if(cg.x <= bb_sz.x && cg.y<=bb_sz.y)
+  if(cg.x <= bb_ext_sz.x && cg.y<=bb_ext_sz.y)
     data = read_imagei(cell_own_image_in, cell_own_sampler, imgcrd);
 
   cell_own_shr[cl.x+1][cl.y+1].x = data.x;
   cell_own_shr[cl.x+1][cl.y+1].y = data.y;    
 
-  if(cg.x <= bb_sz.x && cg.y<=bb_sz.y)
+  if(cg.x <= bb_ext_sz.x && cg.y<=bb_ext_sz.y)
     data = read_imagei(cell_pr_img, cell_pr_sampler, imgcrd);
 
-  p.x = data.x;
-  p.y = data.y;  
+  p.x = data.x - x_ext_range[0];
+  p.y = data.y - y_ext_range[0];
 
-  if(cg.x <= bb_sz.x && cg.y<=bb_sz.y)
+  if(cg.x <= bb_ext_sz.x && cg.y<=bb_ext_sz.y)
     data = read_imagei(cell_fg_img, cell_fg_sampler, imgcrd);
 
   flag = data.x;
@@ -134,7 +137,7 @@ __kernel void dobfs_markowner_extrema
   imgcrd.y = cg.x + xadd;
   imgcrd.x = cg.y + yadd;
 
-  if(cg.x +xadd <= bb_sz.x && cg.y+yadd <=bb_sz.y)
+  if(cg.x +xadd <= bb_ext_sz.x && cg.y+yadd <=bb_ext_sz.y)
     data = read_imagei(cell_own_image_in, cell_own_sampler, imgcrd);
 
   cell_own_shr[cl.x + 1 + xadd][cl.y + 1 + yadd].x = data.x;
@@ -148,7 +151,9 @@ __kernel void dobfs_markowner_extrema
   
   short2 cets[2];
   
-  if(cg.x <= bb_sz.x && cg.y<=bb_sz.y && is_cell_critical(flag) == 0)
+  if(cg.x <= bb_ext_sz.x && cg.y<=bb_ext_sz.y &&
+     is_cell_critical(flag) == 0 &&
+     is_cell_paired(flag) == 1)
   {     
     if(d == 0 || d == 2)
     {
@@ -159,19 +164,19 @@ __kernel void dobfs_markowner_extrema
     if(d == 1)
     {           
       if(pd == 0) 
-	get_cell_facets(cg,cets);
+        get_cell_facets(cg,cets);
       else 
-	get_cell_cofacets(cg,cets);
+        get_cell_cofacets(cg,cets);
     
       int inf_idx = 0;
       
       if(cets[0].x == p.x && cets[0].y == p.y)
-	inf_idx = 1;
+        inf_idx = 1;
 
       inf_cell.x = cets[inf_idx].x;
       inf_cell.y = cets[inf_idx].y;     
     }
-    if(inf_cell.x <= bb_sz.x && inf_cell.y<=bb_sz.y)
+    if(inf_cell.x <= bb_ext_sz.x && inf_cell.y<=bb_ext_sz.y)
       inf_valid = 1;
   }
   
@@ -202,9 +207,9 @@ __kernel void dobfs_markowner_extrema
       
       if(inf_cell_own.x != -1 && inf_cell_own.y != -1)
       {
-	own.x = inf_cell_own.x;
-	own.y = inf_cell_own.y;
-	need_local_update = 1;
+        own.x = inf_cell_own.x;
+        own.y = inf_cell_own.y;
+        need_local_update = 1;
       }      
     }
     
@@ -228,17 +233,12 @@ __kernel void dobfs_markowner_extrema
   
   if(need_global_update == 1)
     g_changed[0] = 1;
+
+  short2 own;
+  own.x = cell_own_shr[cl.x+1][cl.y+1].x;
+  own.y = cell_own_shr[cl.x+1][cl.y+1].y;  
   
-  data.z=0;data.w =0;
-  
-  imgcrd.y = cg.x;
-  imgcrd.x = cg.y;       
-  
-  data.y = cell_own_shr[cl.x+1][cl.y+1].x;
-  data.x = cell_own_shr[cl.x+1][cl.y+1].y;
-  
-  if(cg.x <= bb_sz.x && cg.y<=bb_sz.y /*data.x != -1 && data.y != -1*/)
-  {
-    write_imagei(cell_own_image_out, imgcrd,data);
-  }  
+  if(cg.x <= bb_ext_sz.x && cg.y<=bb_ext_sz.y )
+    write_to_owner_image(cg,own,cell_own_image_out);
+
 }

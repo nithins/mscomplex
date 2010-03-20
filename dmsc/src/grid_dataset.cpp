@@ -62,19 +62,32 @@ void compile_cl_program(std::string prog_filename,std::string header_filename,
   if(error_code != CL_SUCCESS)
   {
 
+    const size_t def_len = 2048;
+
+    char *buffer = new char[def_len];
+
     size_t len;
-    char buffer[2048];
 
     clGetProgramBuildInfo(prog, device_id, CL_PROGRAM_BUILD_LOG,
-                          sizeof(buffer), buffer, &len);
+                          def_len, buffer, &len);
+
+    if(len+1 > def_len)
+    {
+      buffer = new char[len+1];
+
+      clGetProgramBuildInfo(prog, device_id, CL_PROGRAM_BUILD_LOG,
+                            len+1, buffer, &len);
+    }
+
+    std::string buf_str(buffer);
+
+    delete []buffer;
 
     // Log the binary generated
 
     size_t bin_size;
     error_code = clGetProgramInfo(prog,CL_PROGRAM_BINARY_SIZES,
                        sizeof(size_t),&bin_size,NULL);
-
-    _LOG(buffer);
 
     if(error_code != CL_SUCCESS)
     {
@@ -89,8 +102,7 @@ void compile_cl_program(std::string prog_filename,std::string header_filename,
       _LOG_TO_FILE(std::string(ptx_buffer),ptx_filename.c_str());
       delete []ptx_buffer;
     }
-
-    throw std::runtime_error(buffer);
+    throw std::runtime_error(buf_str);
   }
 
 }
@@ -355,10 +367,10 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
   collateCritcalPoints_ocl(commands);
 
   _LOG("Done cp collation    t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
-//
-//  assignCellOwnerExtrema_ocl(commands);
-//
-//  _LOG("Done bfs flood       t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+
+  assignCellOwnerExtrema_ocl(commands);
+
+  _LOG("Done bfs flood       t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
   clear_pair_flag_imgs_ocl();
 
@@ -479,6 +491,38 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
   _CHECKCL_ERR_CODE(error_code,"Failed to read critpt_id_buf");
 
   clReleaseMemObject(critpt_idx_buf);
+}
+
+void read_n_log_cell_own_image(cl_mem img,cl_command_queue &commands,
+                               GridDataset::rect_size_t sz)
+{
+  int error_code;
+
+  size_t cell_img_ogn[3] = {0,0,0};
+
+  size_t cell_img_rgn[3] = {sz[0]+1,sz[1]+1,1};
+
+  GridDataset::cellpair_array_t cell_own;
+
+  cell_own.resize ( (boost::extents[1+sz[0]][1+sz[1]]));
+
+  error_code = clEnqueueReadImage( commands, img, CL_TRUE,
+                                   cell_img_ogn,cell_img_rgn,0,0,
+                                   cell_own.data(),0,NULL,NULL);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to read cell own image");
+
+
+  for(int y = 0;y< cell_own.size();++y)
+  {
+    for(int x = 0;x< cell_own[y].size();++x)
+    {
+      GridDataset::cellid_t own = cell_own(GridDataset::cellid_t(x,y));
+
+      std::cout<<own<<" ";
+    }
+    std::cout<<std::endl;
+  }
 
 }
 
@@ -487,28 +531,26 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
 
   cl_kernel kernel;
 
-  rect_size_t sz = m_ext_rect.size();
+  rect_size_t ext_sz = m_ext_rect.size();
 
-  size_t cell_img_rgn[3] = {sz[0]+1,sz[1]+1,1};
+  size_t cell_img_rgn[3] = {ext_sz[0]+1,ext_sz[1]+1,1};
   size_t cell_img_ogn[3] = {0,0,0};
 
   int error_code;                       // error code returned from api calls
 
-  // Get the maximum work group size for executing the kernel on the device
-  // TODO: get a good value for each kernel
   size_t local[] = {max_threads_2D_x,max_threads_2D_y};
 
-  // Execute the kernel over the entire range of our 1d input data set
-  // using the maximum number of work group items for this device
-  //
-  size_t global[] =
-  {
-    _GET_GLOBAL(sz[0]+1,local[0]) ,
-    _GET_GLOBAL(sz[1]+1,local[1]) ,
-  }; // should be div by 2*local
+  size_t global[2];
 
-  cell_coord_t x_min = m_ext_rect.left()  ,x_max = m_ext_rect.right();
-  cell_coord_t y_min = m_ext_rect.bottom(),y_max = m_ext_rect.top();
+  global[0] = _GET_GLOBAL(ext_sz[0]+1,local[0]) ;
+  global[1] = _GET_GLOBAL(ext_sz[1]+1,local[0]) ;
+
+  cl_short2 x_ext_range,y_ext_range;
+
+  x_ext_range[0] = m_ext_rect.left();
+  x_ext_range[1] = m_ext_rect.right();
+  y_ext_range[0] = m_ext_rect.bottom();
+  y_ext_range[1] = m_ext_rect.top();
 
   cl_image_format cell_own_imgfmt;
 
@@ -533,10 +575,8 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
   error_code  = 0;
   error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &cell_own_img);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &x_min);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &x_max);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &y_min);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &y_max);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &x_ext_range);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &y_ext_range);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to set args for dobfs_init kernel");
 
@@ -580,11 +620,10 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
     error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_pair_img);
     error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &cell_own_img);
     error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &cell_own_img);
-    error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &x_min);
-    error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &x_max);
-    error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &y_min);
-    error_code |= clSetKernelArg(kernel, a++, sizeof(cell_coord_t), &y_max);
     error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &is_changed_buf);
+    error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &x_ext_range);
+    error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &y_ext_range);
+
 
     _CHECKCL_ERR_CODE(error_code,"Failed to set args for dobfs_markowner_extrema kernel");
 
@@ -599,20 +638,12 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
                                      0,sizeof(uint),&is_changed,0,NULL,NULL);
 
     _CHECKCL_ERR_CODE(error_code,"Failed to read to is_changed_buf");
-
   }
   while(is_changed == 1);
 
+  read_n_log_cell_own_image(cell_own_img,commands,ext_sz);
+
   clReleaseMemObject(is_changed_buf);
-
-  cellpair_array_t cell_own;
-
-  cell_own.resize ( (boost::extents[1+sz[0]][1+sz[1]]));
-
-  error_code = clEnqueueReadImage( commands, cell_own_img, CL_TRUE,
-                                   cell_img_ogn,cell_img_rgn,0,0,
-                                   cell_own.data(),0,NULL,NULL);
-
   clReleaseMemObject(cell_own_img);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to cell_own_img ");
