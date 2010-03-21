@@ -110,9 +110,13 @@ public:
 
   void  work_ocl();
 
+  void  writeout_connectivity_ocl(mscomplex_t *msgraph);
+
   void  assignGradients_ocl(cl_command_queue &commands);
 
-  void  read_pair_flag_imgs_ocl(cl_command_queue &commands);
+  void  read_pair_img_ocl(cl_command_queue &commands);
+
+  void  read_flag_img_ocl(cl_command_queue &commands);
 
   void  collateCritcalPoints_ocl(cl_command_queue &commands);
 

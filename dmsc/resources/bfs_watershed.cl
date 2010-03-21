@@ -240,5 +240,4 @@ const short2 ext_tr
   
   if(cg.x <= bb_ext_sz.x && cg.y<=bb_ext_sz.y )
     write_to_owner_image(cg,own,cell_own_image_out);
-
 }

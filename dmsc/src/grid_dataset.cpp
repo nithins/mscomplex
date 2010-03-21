@@ -12,33 +12,67 @@ typedef GridDataset::cellid_t cellid_t;
 
 cl_device_id s_device_id;             // compute device id
 cl_context s_context;                 // compute context
-cl_program s_grad_pgm;                // compute program
-cl_program s_coll_cps_pgm;            // compute program
-cl_program s_bfs_pgm;                 // compute program
 PrefixScan s_pre_scan;                // prefix scanning program
 
-enum eOclProgram
-{
-  OCLPROG_GRADIENT_ASSIGN=0,
-  OCLPROG_COLLATE_CRITPTS,
-  OCLPROG_BFS_WATERSHED,
-  OCLPROG_COUNT,
-};
-
-struct oclProgSourceInfo
+struct oclProgInfo
 {
   const char * sourcefile;
   const char * additional_include;
   const char * compilation_flags;
+  cl_program   _handle;
 };
 
-oclProgSourceInfo s_prog_sources[OCLPROG_COUNT] = {
-  {":/oclsources/assigngradient.cl",":/oclsources/common_funcs.cl",""},
-  {":/oclsources/collate_critpts.cl",":/oclsources/common_funcs.cl",""},
-  {":/oclsources/bfs_watershed.cl",":/oclsources/common_funcs.cl","-cl-opt-disable"},
+enum eOclProgram
+{
+  OCLPROG_BEGIN=0,
+  OCLPROG_GRADIENT_ASSIGN=0,
+  OCLPROG_COLLATE_CRITPTS,
+  OCLPROG_BFS_WATERSHED,
+  OCLPROG_END,
 };
 
+oclProgInfo s_prog_sources[OCLPROG_END-OCLPROG_BEGIN] = {
+  {":/oclsources/assigngradient.cl",":/oclsources/common_funcs.cl","",NULL},
+  {":/oclsources/collate_critpts.cl",":/oclsources/common_funcs.cl","",NULL},
+  {":/oclsources/bfs_watershed.cl",":/oclsources/common_funcs.cl","-cl-opt-disable",NULL},
+};
 
+struct oclKernelSourceInfo
+{
+  eOclProgram  program_idx;
+  const char * kernel_name;
+  cl_kernel    _handle;
+};
+
+enum eOclKernels
+{
+  OCLKERN_BEGIN=0,
+  OCLKERN_ASSIGN_GRADIENT=0,
+  OCLKERN_COMPLETE_PAIRINGS,
+  OCLKERN_MARKBOUNDRY_PAIRS_CRITICAL_1,
+  OCLKERN_MARKBOUNDRY_PAIRS_CRITICAL_2,
+  OCLKERN_COLLATE_CPS_INITCOUNT,
+  OCLKERN_COLLATE_CPS_WRITEIDS,
+  OCLKERN_COUNT_CRITPT_INCIDENCES,
+  OCLKERN_WRITE_CRITPT_INCIDENCES,
+  OCLKERN_MARK_OWNER_EXTREMA_INIT,
+  OCLKERN_MARK_OWNER_EXTREMA,
+  OCLKERN_END,
+};
+
+oclKernelSourceInfo s_kernels[OCLKERN_END-OCLKERN_BEGIN] =
+{
+  {OCLPROG_GRADIENT_ASSIGN,"assign_gradient",NULL},
+  {OCLPROG_GRADIENT_ASSIGN,"complete_pairings",NULL},
+  {OCLPROG_GRADIENT_ASSIGN,"mark_boundrypairs_critical_1",NULL},
+  {OCLPROG_GRADIENT_ASSIGN,"mark_boundrypairs_critical_2",NULL},
+  {OCLPROG_COLLATE_CRITPTS,"collate_cps_initcount",NULL},
+  {OCLPROG_COLLATE_CRITPTS,"collate_cps_writeids",NULL},
+  {OCLPROG_COLLATE_CRITPTS,"count_critpt_incidences",NULL},
+  {OCLPROG_COLLATE_CRITPTS,"write_critpt_incidences",NULL},
+  {OCLPROG_BFS_WATERSHED,"dobfs_markowner_extrema_init",NULL},
+  {OCLPROG_BFS_WATERSHED,"dobfs_markowner_extrema",NULL},
+};
 
 const int max_threads_1D   = 128;
 const int max_threads_2D_x = 16;
@@ -145,33 +179,40 @@ void GridDataset::init_opencl()
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create a compute context");
 
-  // Create the gradient assignment compute program from the source buffer
-  //
 
-  compile_cl_program(":/oclsources/assigngradient.cl",":/oclsources/common_funcs.cl",
-                     "",s_grad_pgm,s_context,s_device_id);
+  for(uint pgm_idx = OCLPROG_BEGIN;pgm_idx != OCLPROG_END; pgm_idx++ )
+  {
 
-  // Create the critical point collation compute program from the source buffer
-  //
-  compile_cl_program(":/oclsources/collate_critpts.cl",":/oclsources/common_funcs.cl",
-                     "",s_coll_cps_pgm,s_context,s_device_id);
+    compile_cl_program(s_prog_sources[pgm_idx].sourcefile,
+                       s_prog_sources[pgm_idx].additional_include,
+                       s_prog_sources[pgm_idx].compilation_flags,
+                       s_prog_sources[pgm_idx]._handle,
+                       s_context,s_device_id);
+  }
 
-  // Create the dobfs_watershed program from the source buffer
-  //
+  for(uint kern_idx = OCLKERN_BEGIN;kern_idx != OCLKERN_END; kern_idx++ )
+  {
+    s_kernels[kern_idx]._handle =
+        clCreateKernel(s_prog_sources[s_kernels[kern_idx].program_idx]._handle,
+                       s_kernels[kern_idx].kernel_name, &error_code);
 
-  compile_cl_program(":/oclsources/bfs_watershed.cl",":/oclsources/common_funcs.cl",
-                     "-cl-opt-disable",s_bfs_pgm,s_context,s_device_id);
-
+    _CHECKCL_ERR_CODE(error_code,"Failed to create kernel");
+  }
 
   s_pre_scan.init(s_context,s_device_id);
 }
 
 void GridDataset::stop_opencl()
 {
-  // Shutdown and cleanup
-  //
-  clReleaseProgram(s_coll_cps_pgm);
-  clReleaseProgram(s_grad_pgm);
+  for(uint kern_idx = OCLKERN_BEGIN;kern_idx != OCLKERN_END; kern_idx++ )
+  {
+    clReleaseKernel(s_kernels[kern_idx]._handle);
+  }
+
+  for(uint pgm_idx = OCLPROG_BEGIN;pgm_idx != OCLPROG_END; pgm_idx++ )
+  {
+    clReleaseProgram(s_prog_sources[pgm_idx]._handle);
+  }
   clReleaseContext(s_context);
   s_pre_scan.cleanup();
 
@@ -210,7 +251,7 @@ void  GridDataset::create_pair_flag_imgs_ocl()
 
 }
 
-void  GridDataset::read_pair_flag_imgs_ocl(cl_command_queue &commands)
+void  GridDataset::read_flag_img_ocl(cl_command_queue &commands)
 {
 
   rect_size_t sz = m_ext_rect.size();
@@ -220,21 +261,30 @@ void  GridDataset::read_pair_flag_imgs_ocl(cl_command_queue &commands)
 
   int error_code;
 
-  // Read back the results from the device to verify the output
-  //
-
-  error_code = clEnqueueReadImage( commands, m_cell_pair_img, CL_TRUE,
-                                   cell_img_ogn,cell_img_rgn,0,0,
-                                   m_cell_pairs.data(),0,NULL,NULL);
-
-  _CHECKCL_ERR_CODE(error_code,"Failed to read back cell pair image");
-
   error_code = clEnqueueReadImage( commands, m_cell_flag_img, CL_TRUE,
                                    cell_img_ogn,cell_img_rgn,0,0,
                                    m_cell_flags.data(),0,NULL,NULL);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to read back cell flag image");
 
+
+}
+
+void  GridDataset::read_pair_img_ocl(cl_command_queue &commands)
+{
+
+  rect_size_t sz = m_ext_rect.size();
+
+  size_t cell_img_ogn[3] = {0,0,0};
+  size_t cell_img_rgn[3] = {sz[1]+1,sz[0]+1,1};
+
+  int error_code;
+
+  error_code = clEnqueueReadImage( commands, m_cell_pair_img, CL_TRUE,
+                                   cell_img_ogn,cell_img_rgn,0,0,
+                                   m_cell_pairs.data(),0,NULL,NULL);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to read back cell pair image");
 
 }
 
@@ -274,7 +324,8 @@ void  GridDataset::clear_buffers_ocl()
 
   _LOG("Gradient Assignment  t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
-  read_pair_flag_imgs_ocl(commands);
+  read_pair_img_ocl(commands);
+  read_flag_img_ocl(commands);
 
   _LOG("Done reading results t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
@@ -315,15 +366,6 @@ void GridDataset::assignGradients_ocl(cl_command_queue &commands)
   global[0] = _GET_GLOBAL(int_sz[0]+1,local[0]) ;
   global[1] = _GET_GLOBAL(int_sz[1]+1,local[0]) ;
 
-  // Create assign gradient kernel
-  //
-  cl_kernel kernel = clCreateKernel(s_grad_pgm, "assign_gradient", &error_code);
-
-  _CHECKCL_ERR_CODE(error_code,"Failed to create assign gradient kernel");
-
-  // Create the input and output arrays in device memory for our calculation
-  //
-
   cl_image_format vert_fn_imgfmt;
 
   vert_fn_imgfmt.image_channel_data_type = CL_FLOAT;
@@ -348,10 +390,9 @@ void GridDataset::assignGradients_ocl(cl_command_queue &commands)
   ext_tr[0] = m_ext_rect.right();
   ext_tr[1] = m_ext_rect.top();
 
-  // Set the arguments to our compute kernel
-  //
-
   unsigned int a = 0;
+
+  cl_kernel kernel= s_kernels[OCLKERN_ASSIGN_GRADIENT]._handle;
 
   error_code = 0;
   error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &vfn_img_cl);
@@ -369,23 +410,17 @@ void GridDataset::assignGradients_ocl(cl_command_queue &commands)
 
   _CHECKCL_ERR_CODE(error_code,"Failed to enque assign grad kernel");
 
-  // Wait for the command commands to get serviced before launching next kernel
-  //
-  clFinish(commands);
+  error_code = clFinish(commands);
 
-  // Release what we dont need anymore
-  //
-  clReleaseMemObject(vfn_img_cl);
-  clReleaseKernel(kernel);
+  _CHECKCL_ERR_CODE(error_code,"Failed to execute assign grad kernel");
 
-  kernel = clCreateKernel(s_grad_pgm, "complete_pairings", &error_code);
+  error_code = clReleaseMemObject(vfn_img_cl);
 
-  _CHECKCL_ERR_CODE(error_code,"Failed to create complete_pairings kernel");
-
-  // Set the arguments to our compute kernel
-  //
+  _CHECKCL_ERR_CODE(error_code,"Failed to release grad vfn_img_cl");
 
   a = 0;
+
+  kernel = s_kernels[OCLKERN_COMPLETE_PAIRINGS]._handle;
 
   error_code = 0;
   error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_pair_img);
@@ -405,19 +440,13 @@ void GridDataset::assignGradients_ocl(cl_command_queue &commands)
 
   _CHECKCL_ERR_CODE(error_code,"Failed to enqueue complete_pairings kernel");
 
-  // Wait for the command commands to get serviced before copying results
-  //
-  clFinish(commands);
-  clReleaseKernel(kernel);
+  error_code = clFinish(commands);
 
-  kernel = clCreateKernel(s_grad_pgm, "mark_boundrypairs_critical_1", &error_code);
-
-  _CHECKCL_ERR_CODE(error_code,"Failed to create mark_boundrypairs_critical_1 kernel");
-
-  // Set the arguments to our compute kernel
-  //
+  _CHECKCL_ERR_CODE(error_code,"Failed to execute complete pairings kernel");
 
   a = 0;
+
+  kernel = s_kernels[OCLKERN_MARKBOUNDRY_PAIRS_CRITICAL_1]._handle;
 
   error_code = 0;
   error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_pair_img);
@@ -438,19 +467,13 @@ void GridDataset::assignGradients_ocl(cl_command_queue &commands)
 
   _CHECKCL_ERR_CODE(error_code,"Failed to enqueue mark_boundrypairs_critical_1 kernel");
 
-  // Wait for the command commands to get serviced before copying results
-  //
-  clFinish(commands);
-  clReleaseKernel(kernel);
+  error_code = clFinish(commands);
 
-  kernel = clCreateKernel(s_grad_pgm, "mark_boundrypairs_critical_2", &error_code);
-
-  _CHECKCL_ERR_CODE(error_code,"Failed to create mark_boundrypairs_critical_2 kernel");
-
-  // Set the arguments to our compute kernel
-  //
+  _CHECKCL_ERR_CODE(error_code,"Failed to execute mark_boundrypairs_critical_1 kernel");
 
   a = 0;
+
+  kernel = s_kernels[OCLKERN_MARKBOUNDRY_PAIRS_CRITICAL_2]._handle;
 
   error_code = 0;
   error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_pair_img);
@@ -469,11 +492,9 @@ void GridDataset::assignGradients_ocl(cl_command_queue &commands)
 
   _CHECKCL_ERR_CODE(error_code,"Failed to enqueue mark_boundrypairs_critical_2 kernel");
 
-  // Wait for the command commands to get serviced before copying results
-  //
-  clFinish(commands);
-  clReleaseKernel(kernel);
+  error_code = clFinish(commands);
 
+  _CHECKCL_ERR_CODE(error_code,"Failed to execute mark_boundrypairs_critical_2 kernel");
 }
 
 void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
@@ -507,12 +528,8 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
 
   _CHECKCL_ERR_CODE(error_code,"couldnt create prefixsum_buf");
 
-  kernel = clCreateKernel(s_coll_cps_pgm, "collate_cps_initcount", &error_code);
+  kernel = s_kernels[OCLKERN_COLLATE_CPS_INITCOUNT]._handle;
 
-  _CHECKCL_ERR_CODE(error_code,"Failed to create compute kernel");
-
-  // Set the arguments to our compute kernel
-  //
   uint a=0;
 
   error_code = 0;
@@ -521,21 +538,18 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_bl);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_tr);
 
-  _CHECKCL_ERR_CODE(error_code,"Failed to set kernel arguments");
+  _CHECKCL_ERR_CODE(error_code,"Failed to set collate_critpts_initcount kernel arguments");
 
   error_code = clEnqueueNDRangeKernel(commands, kernel, 2, NULL,
                                       global, local, 0, NULL, NULL);
 
-  _CHECKCL_ERR_CODE(error_code,"Failed to execute kernel");
+  _CHECKCL_ERR_CODE(error_code,"Failed to enqueue collate_critpts_initcount kernel");
 
-  clFinish(commands);
+  error_code =  clFinish(commands);
 
-  clReleaseKernel(kernel);
+  _CHECKCL_ERR_CODE(error_code,"Failed to execute collate_critpts_initcount kernel");
 
   uint crit_pt_ct = 0 ;
-
-  clEnqueueWriteBuffer(commands,critpt_idx_buf,CL_TRUE,critpt_idx_buf_sz -sizeof(uint),
-                       sizeof(uint),&crit_pt_ct,0,NULL,NULL);
 
   s_pre_scan.CreatePartialSumBuffers(grid_size+1,s_context);
   s_pre_scan.PreScanBuffer(critpt_idx_buf,critpt_idx_buf,grid_size+1,commands);
@@ -544,8 +558,11 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
 
   _CHECKCL_ERR_CODE(error_code,"Failed to execute kernel");
 
-  clEnqueueReadBuffer(commands,critpt_idx_buf,CL_TRUE,critpt_idx_buf_sz -sizeof(uint),
-                      sizeof(uint),&crit_pt_ct,0,NULL,NULL);
+  error_code = clEnqueueReadBuffer
+               (commands,critpt_idx_buf,CL_TRUE,critpt_idx_buf_sz -sizeof(uint),
+                sizeof(uint),&crit_pt_ct,0,NULL,NULL);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to read crit_pt_ct");
 
   uint crit_pt_id_buf_sz = crit_pt_ct*sizeof(cell_coord_t)*2;
 
@@ -554,12 +571,8 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create crit_pt_id_buf");
 
-  kernel = clCreateKernel(s_coll_cps_pgm, "collate_cps_writeids", &error_code);
+  kernel = s_kernels[OCLKERN_COLLATE_CPS_WRITEIDS]._handle;
 
-  _CHECKCL_ERR_CODE(error_code,"Failed to create compute kernel");
-
-  // Set the arguments to our compute kernel
-  //
   a = 0;
 
   error_code = 0;
@@ -570,16 +583,16 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_bl);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_tr);
 
-  _CHECKCL_ERR_CODE(error_code,"Failed to set kernel arguments");
+  _CHECKCL_ERR_CODE(error_code,"Failed to set collate_cps_writeids' arguments");
 
   error_code = clEnqueueNDRangeKernel(commands, kernel, 2, NULL,
                                       global, local, 0, NULL, NULL);
 
-  _CHECKCL_ERR_CODE(error_code,"Failed to execute kernel");
+  _CHECKCL_ERR_CODE(error_code,"Failed to enqueue collate_cps_writeids ");
 
-  clFinish(commands);
+  error_code = clFinish(commands);
 
-  clReleaseKernel(kernel);
+  _CHECKCL_ERR_CODE(error_code,"Failed to execute collate_cps_writeids ");
 
   m_critical_cells.resize(crit_pt_ct);
 
@@ -588,7 +601,9 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
 
   _CHECKCL_ERR_CODE(error_code,"Failed to read critpt_id_buf");
 
-  clReleaseMemObject(critpt_idx_buf);
+  error_code = clReleaseMemObject(critpt_idx_buf);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to reelase critpt_id_buf");
 }
 
 void read_n_log_cell_own_image(cl_mem img,cl_command_queue &commands,
@@ -661,12 +676,8 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create owner image");
 
-  kernel = clCreateKernel(s_bfs_pgm, "dobfs_markowner_extrema_init", &error_code);
+  kernel = s_kernels[OCLKERN_MARK_OWNER_EXTREMA_INIT]._handle;
 
-  _CHECKCL_ERR_CODE(error_code,"Failed to create dobfs_init kernel");
-
-  // Set the arguments to our compute kernel
-  //
   uint a = 0 ;
 
   error_code  = 0;
@@ -680,15 +691,13 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
   error_code = clEnqueueNDRangeKernel(commands, kernel, 2, NULL,
                                       global, local, 0, NULL, NULL);
 
+  _CHECKCL_ERR_CODE(error_code,"Failed to enqueue dobfs_init kernel");
+
+  error_code = clFinish(commands);
+
   _CHECKCL_ERR_CODE(error_code,"Failed to execute dobfs_init kernel");
 
-  clFinish(commands);
-
   uint is_changed = 0;
-
-  kernel = clCreateKernel(s_bfs_pgm, "dobfs_markowner_extrema", &error_code);
-
-  _CHECKCL_ERR_CODE(error_code,"Failed to create dobfs_markowner_extrema kernel");
 
   uint iteration_ct = 0;
 
@@ -697,11 +706,13 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create is_changed_buf");
 
+  kernel = s_kernels[OCLKERN_MARK_OWNER_EXTREMA]._handle;
+
   do
   {
     is_changed = 0;
 
-    _LOG_VAR(iteration_ct++);
+    iteration_ct++;
 
     error_code = clEnqueueWriteBuffer(commands,is_changed_buf,CL_TRUE,
                                       0,sizeof(uint),&is_changed,0,NULL,NULL);
@@ -727,9 +738,11 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
     error_code = clEnqueueNDRangeKernel(commands, kernel, 2, NULL,
                                         global, local, 0, NULL, NULL);
 
-    _CHECKCL_ERR_CODE(error_code,"Failed to execute dobfs_markowner_extrema kernel");
+    _CHECKCL_ERR_CODE(error_code,"Failed to enqueue dobfs_markowner_extrema kernel");
 
-    clFinish(commands);
+    error_code = clFinish(commands);
+
+    _CHECKCL_ERR_CODE(error_code,"Failed to execute dobfs_markowner_extrema kernel");
 
     error_code = clEnqueueReadBuffer(commands,is_changed_buf,CL_TRUE,
                                      0,sizeof(uint),&is_changed,0,NULL,NULL);
@@ -738,9 +751,11 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
   }
   while(is_changed == 1);
 
-  clReleaseMemObject(is_changed_buf);
+  _LOG_VAR(iteration_ct);
 
-  _CHECKCL_ERR_CODE(error_code,"Failed to cell_own_img ");
+  error_code = clReleaseMemObject(is_changed_buf);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to release ischanged buf ");
 }
 template <typename T>
     void read_n_log_1D_buf(cl_command_queue &commands,cl_mem &buf,uint sz)
@@ -788,12 +803,8 @@ void GridDataset::collect_saddle_conn_ocl(cl_command_queue &commands)
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create incidence_ct_buf");
 
-  kernel = clCreateKernel(s_coll_cps_pgm, "count_critpt_incidences", &error_code);
+  kernel = s_kernels[OCLKERN_COUNT_CRITPT_INCIDENCES]._handle;
 
-  _CHECKCL_ERR_CODE(error_code,"Failed to create count_critpt_incidences kernel");
-
-  // Set the arguments to our compute kernel
-  //
   uint a = 0 ;
 
   error_code  = 0;
@@ -815,8 +826,6 @@ void GridDataset::collect_saddle_conn_ocl(cl_command_queue &commands)
 
   _CHECKCL_ERR_CODE(error_code,"Failed to execute count_critpt_incidences kernel");
 
-  clReleaseKernel(kernel);
-
   s_pre_scan.CreatePartialSumBuffers(critpt_ct+1,s_context);
   s_pre_scan.PreScanBuffer(incidence_ct_buf,incidence_ct_buf,critpt_ct+1,commands);
   s_pre_scan.ReleasePartialSums();
@@ -835,12 +844,8 @@ void GridDataset::collect_saddle_conn_ocl(cl_command_queue &commands)
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create incidence_buf");
 
-  kernel = clCreateKernel(s_coll_cps_pgm, "write_critpt_incidences", &error_code);
+  kernel = s_kernels[OCLKERN_WRITE_CRITPT_INCIDENCES]._handle;
 
-  _CHECKCL_ERR_CODE(error_code,"Failed to create write_critpt_incidences kernel");
-
-  // Set the arguments to our compute kernel
-  //
   a = 0 ;
 
   error_code  = 0;
@@ -864,12 +869,10 @@ void GridDataset::collect_saddle_conn_ocl(cl_command_queue &commands)
 
   _CHECKCL_ERR_CODE(error_code,"Failed to execute write_critpt_incidences kernel");
 
-  clReleaseKernel(kernel);
-
-  m_saddle_incidence_idx_offset.resize(critpt_ct);
+  m_saddle_incidence_idx_offset.resize(critpt_ct+1);
 
   error_code =clEnqueueReadBuffer
-              (commands,incidence_ct_buf,CL_TRUE,0,incidence_ct_buf_sz-sizeof(uint),
+              (commands,incidence_ct_buf,CL_TRUE,0,incidence_ct_buf_sz,
                m_saddle_incidence_idx_offset.data(),0,NULL,NULL);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to read back saddle inc idx offsets");
@@ -885,6 +888,58 @@ void GridDataset::collect_saddle_conn_ocl(cl_command_queue &commands)
   clReleaseMemObject(incidence_ct_buf);
 
   clReleaseMemObject(incidence_buf);
+}
+
+void connectCps (GridDataset::mscomplex_t *msgraph,
+                 uint cp1_ind,
+                 uint cp2_ind)
+{
+  if(GridDataset::s_getCellDim(msgraph->m_cps[cp1_ind]->cellid) <
+     GridDataset::s_getCellDim(msgraph->m_cps[cp2_ind]->cellid))
+    std::swap(cp1_ind,cp2_ind);
+
+  GridDataset::critpt_t *cp1 = msgraph->m_cps[cp1_ind];
+
+  GridDataset::critpt_t *cp2 = msgraph->m_cps[cp2_ind];
+
+  cp1->des.insert (cp2_ind);
+
+  cp2->asc.insert (cp1_ind);
+}
+
+void GridDataset::writeout_connectivity_ocl(mscomplex_t *msgraph)
+{
+  addCriticalPointsToMSComplex
+      (msgraph,m_critical_cells.begin(),m_critical_cells.end());
+
+  msgraph->m_cp_fns.resize(m_critical_cells.size());
+
+  for (cellid_list_t::iterator it = m_critical_cells.begin() ;
+  it != m_critical_cells.end();++it)
+  {
+    cellid_t c = *it;
+
+    uint cp_idx = msgraph->m_id_cp_map[c];
+
+    msgraph->m_cp_fns[cp_idx] = get_cell_fn(c);
+
+    if(!isCellPaired(c))  continue;
+
+    msgraph->m_cps[cp_idx]->isBoundryCancelable = true;
+
+    msgraph->m_cps[cp_idx]->pair_idx =
+        msgraph->m_id_cp_map[getCellPairId(c)];
+  }
+
+  for(uint i = 1 ; i < m_saddle_incidence_idx_offset.size();++i)
+  {
+    for(uint j = m_saddle_incidence_idx_offset[i-1];
+        j < m_saddle_incidence_idx_offset[i];++j)
+    {
+      connectCps(msgraph,m_saddle_incidence_idx[j],i-1);
+    }
+  }
+
 }
 
 void connectCps (GridDataset::mscomplex_t *msgraph,

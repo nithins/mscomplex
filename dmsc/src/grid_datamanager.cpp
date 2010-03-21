@@ -168,11 +168,16 @@ void GridDataManager::clearInteriorGrad(uint start,uint end )
 void GridDataManager::workPiece ( GridDataPiece *dp )
 {
   if(m_use_ocl == true)
+  {
     dp->dataset->work_ocl();
+    dp->dataset->writeout_connectivity_ocl(dp->msgraph);
+  }
   else
+  {
     dp->dataset->assignGradients();
 
-  dp->dataset->computeConnectivity(dp->msgraph);
+    dp->dataset->computeConnectivity(dp->msgraph);
+  }
 }
 
 void mergePiecesUp
@@ -395,17 +400,16 @@ GridDataManager::GridDataManager
 
   createDataPieces();
 
+  if(m_use_ocl)
+    GridDataset::init_opencl();
+
   _LOG ( "==========================" );
   _LOG ( "Starting Processing Peices" );
   _LOG ( "--------------------------" );
 
   readFile ();
 
-  //  try
   {
-    if(m_use_ocl)
-      GridDataset::init_opencl();
-
     if(m_single_threaded_mode == true || m_use_ocl == true)
     {
       workAllPieces_st();
@@ -421,34 +425,22 @@ GridDataManager::GridDataManager
     }
     else
     {
-      if(m_use_ocl == false)
-      {
 
-        mergePiecesUp_st();
+      mergePiecesUp_st();
 
-        m_pieces[m_pieces.size()-1]->msgraph->simplify_un_simplify(num_canc);
+      m_pieces[m_pieces.size()-1]->msgraph->simplify_un_simplify(num_canc);
 
-        mergePiecesDown_st();
-      }
+      mergePiecesDown_st();
+
     }
 
-    if(m_use_ocl)
-      GridDataset::stop_opencl();
-
   }
-
-  //  catch(std::exception &e)
-  //  {
-
-  //
-
-  //        throw;
-
-  //  }
-
   _LOG ( "--------------------------" );
   _LOG ( "Finished Processing peices" );
   _LOG ( "==========================" );
+
+  if(m_use_ocl)
+    GridDataset::stop_opencl();
 
   logAllConnections("log/dp-");
 
