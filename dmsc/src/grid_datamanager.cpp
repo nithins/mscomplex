@@ -118,7 +118,7 @@ void GridDataManager::readFile ( )
       if(dp_idx < m_pieces.size()-1)
         m_pieces[dp_idx+1]->dataset->init();
 
-      if(m_single_threaded_mode == false  && m_use_ocl == false)
+      if(m_single_threaded_mode == false )
       {
         if(dp_idx%num_parallel == 0)
         {
@@ -167,16 +167,15 @@ void GridDataManager::clearInteriorGrad(uint start,uint end )
 
 void GridDataManager::workPiece ( GridDataPiece *dp )
 {
-  if(m_use_ocl == true)
-  {
-    dp->dataset->work_ocl();
-    dp->dataset->writeout_connectivity_ocl(dp->msgraph);
-  }
-  else
+  if(m_use_ocl != true)
   {
     dp->dataset->assignGradients();
 
     dp->dataset->computeConnectivity(dp->msgraph);
+  }
+  else
+  {
+    dp->dataset->writeout_connectivity_ocl(dp->msgraph);
   }
 }
 
@@ -185,8 +184,9 @@ void mergePiecesUp
       GridDataPiece  *dp1,
       GridDataPiece  *dp2)
 {
+
   if(dp1->level != dp2->level)
-    throw std::logic_error("dps must have same level");
+      throw std::logic_error("dps must have same level");
 
   dp->level         = dp1->level+1;
   dp->msgraph       = GridMSComplex::merge_up(*dp1->msgraph,*dp2->msgraph);
@@ -200,10 +200,24 @@ void mergePiecesDown
   dp->msgraph->merge_down(*dp1->msgraph,*dp2->msgraph);
 }
 
+void GridDataManager::workPiecesInRange_ocl(uint start,uint end )
+{
+  _LOG ( "Begin ocl work  for pieces from "<<start<<" to "<<end );
+  for ( uint i = start ; i < end;i++ )
+  {
+    GridDataPiece * dp = m_pieces[i];
+
+    dp->dataset->work_ocl();
+  }
+  _LOG ( "End ocl work  for pieces from "<<start<<" to "<<end );
+}
+
 void GridDataManager::workPiecesInRange_mt(uint start,uint end )
 {
-  _LOG ( "Begin calculating asc/des manifolds for pieces from "
-         <<start<<" to "<<end );
+  if(m_use_ocl == true)
+    workPiecesInRange_ocl(start,end);
+
+  _LOG ( "Begin mt work for pieces from "<<start<<" to "<<end );
 
   boost::thread ** threads = new boost::thread*[ end-start ];
 
@@ -230,7 +244,7 @@ void GridDataManager::workPiecesInRange_mt(uint start,uint end )
 
   delete []threads;
 
-  _LOG ( "End calculating asc/des manifolds for all pieces " );
+  _LOG ( "End mt work for pieces from "<<start<<" to "<<end );
 }
 
 void GridDataManager::workAllPieces_mt( )
@@ -240,7 +254,11 @@ void GridDataManager::workAllPieces_mt( )
 
 void GridDataManager::workAllPieces_st( )
 {
-  _LOG ( "Begin calculating asc/des manifolds for all pieces " );
+
+  _LOG ( "Begin st work on pieces" );
+
+  if(m_use_ocl == true)
+    workPiecesInRange_ocl(0,m_pieces.size());
 
   for ( uint i = 0 ; i < m_pieces.size();i++ )
   {
@@ -249,7 +267,7 @@ void GridDataManager::workAllPieces_st( )
     workPiece(dp);
   }
 
-  _LOG ( "End calculating asc/des manifolds for all pieces " );
+  _LOG ( "End st work on pieces" );
 }
 
 void GridDataManager::mergePiecesUp_mt( )
@@ -410,7 +428,7 @@ GridDataManager::GridDataManager
   readFile ();
 
   {
-    if(m_single_threaded_mode == true || m_use_ocl == true)
+    if(m_single_threaded_mode == true )
     {
       workAllPieces_st();
     }

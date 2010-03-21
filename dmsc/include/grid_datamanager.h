@@ -131,6 +131,8 @@ public:
 
   void workPiecesInRange_mt(uint ,uint );
 
+  void workPiecesInRange_ocl(uint ,uint );
+
   void workAllPieces_st( );
 
   void clearInteriorGrad(uint start,uint end );
