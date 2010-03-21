@@ -10,6 +10,28 @@
 
 typedef GridDataset::cellid_t cellid_t;
 
+#define _CHECKCL_ERR_CODE(_ERROR,_MESSAGE)\
+if(_ERROR != CL_SUCCESS) throw std::runtime_error(_MESSAGE);
+
+#define _GET_GLOBAL(s,l) (((s)/(2*(l)))*(2*(l)) + ((((s)%(2*(l))) == 0)?(0):(2*l)))
+
+#ifdef _LOG_TIMINGS
+
+#define _START_TIMER(TIMERVAR) Timer TIMERVAR; TIMERVAR.start();
+
+#define _LOG_TIMER(TIMERVAR,MESSAGE) \
+_LOG("t = "<<TIMERVAR.getElapsedTimeInMilliSec()<<" ms "<<MESSAGE);
+
+#define _END_TIMER(TIMERVAR) TIMERVAR.stop();
+
+#else
+
+#define _START_TIMER(TIMERVAR)
+#define _LOG_TIMER(TIMERVAR,MESSAGE)
+#define _END_TIMER(TIMERVAR)
+
+#endif
+
 cl_device_id s_device_id;             // compute device id
 cl_context s_context;                 // compute context
 PrefixScan s_pre_scan;                // prefix scanning program
@@ -77,9 +99,6 @@ oclKernelSourceInfo s_kernels[OCLKERN_END-OCLKERN_BEGIN] =
 const int max_threads_1D   = 128;
 const int max_threads_2D_x = 16;
 const int max_threads_2D_y = 16;
-
-#define _CHECKCL_ERR_CODE(_ERROR,_MESSAGE)\
-if(_ERROR != CL_SUCCESS) throw std::runtime_error(_MESSAGE);
 
 void compile_cl_program(std::string prog_filename,std::string header_filename,
                         std::string compile_flags,cl_program &prog,cl_context & context,cl_device_id &device_id)
@@ -296,18 +315,11 @@ void  GridDataset::clear_buffers_ocl()
   clReleaseMemObject(m_cell_own_img);
 }
 
-#define _GET_GLOBAL(s,l)\
-(((s)/(2*(l)))*(2*(l)) + ((((s)%(2*(l))) == 0)?(0):(2*l)))
-
-
-
-    void  GridDataset::work_ocl()
+void  GridDataset::work_ocl()
 {
   int error_code;                       // error code returned from api calls
 
-  Timer timer;
-
-  timer.start();
+  _START_TIMER(timer);
 
   // Create a command commands
   //
@@ -318,28 +330,28 @@ void  GridDataset::clear_buffers_ocl()
 
   create_pair_flag_imgs_ocl();
 
-  _LOG("Created data imgs    t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+  _LOG_TIMER(timer,"Created data imgs");
 
   assignGradients_ocl(commands);
 
-  _LOG("Gradient Assignment  t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+  _LOG_TIMER(timer,"Gradient Assignment Done");
 
   read_pair_img_ocl(commands);
   read_flag_img_ocl(commands);
 
-  _LOG("Done reading results t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+  _LOG_TIMER(timer,"Read back Pair and flag results");
 
   collateCritcalPoints_ocl(commands);
 
-  _LOG("Done cp collation    t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+  _LOG_TIMER(timer,"Collated crit pts");
 
-  assignCellOwnerExtrema_ocl(commands);
+  uint it_ct =   assignCellOwnerExtrema_ocl(commands);
 
-  _LOG("Done bfs flood       t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+  _LOG_TIMER(timer,"Watershed Done in "<<it_ct<<" iterations");
 
   collect_saddle_conn_ocl(commands);
 
-  _LOG("Done cllct sddle con t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+  _LOG_TIMER(timer,"Saddle incidence collection Done");
 
   clear_buffers_ocl();
 
@@ -639,7 +651,7 @@ void read_n_log_cell_own_image(cl_mem img,cl_command_queue &commands,
 
 }
 
-void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
+int  GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
 {
 
   cl_kernel kernel;
@@ -751,11 +763,11 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
   }
   while(is_changed == 1);
 
-  _LOG_VAR(iteration_ct);
-
   error_code = clReleaseMemObject(is_changed_buf);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to release ischanged buf ");
+
+  return iteration_ct;
 }
 template <typename T>
     void read_n_log_1D_buf(cl_command_queue &commands,cl_mem &buf,uint sz)

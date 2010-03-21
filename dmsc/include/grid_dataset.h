@@ -120,7 +120,7 @@ public:
 
   void  collateCritcalPoints_ocl(cl_command_queue &commands);
 
-  void  assignCellOwnerExtrema_ocl(cl_command_queue &commands);
+  int   assignCellOwnerExtrema_ocl(cl_command_queue &commands);
 
   void  collect_saddle_conn_ocl(cl_command_queue &commands);
 
