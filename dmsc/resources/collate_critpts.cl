@@ -12,13 +12,37 @@ void write_crit_pt_idx_to_pr_image(short2 c, unsigned int idx,__write_only image
   
   imgcrd.x = c.y;
   imgcrd.y = c.x;
+
+  short2 data_shrt;
+  data_shrt.x = (idx&0xffff);
+  data_shrt.y = ((idx>>16)&0xffff);
   
-  data.x = idx&0xff;
-  data.y = (idx>>16)&0xff;
+  data.x =  data_shrt.x;
+  data.y =  data_shrt.y;
   
   data.z = 0; data.w = 0;
   
   write_imagei(cell_pr_img, imgcrd, data);
+}
+
+unsigned int read_crit_pt_idx_from_pr_image(short2 c,__write_only image2d_t  cell_pr_img)
+{
+  int4 data;
+
+  int2 imgcrd;
+
+  imgcrd.x = c.y;
+  imgcrd.y = c.x;
+
+  data.x = 0;  data.y = 0;data.z = 0; data.w = 0;
+
+  data = read_imagei(cell_pr_img,cell_pr_sampler ,imgcrd);
+
+  unsigned int idx = 0;
+  idx |= data.x&0x0000ffff;
+  idx |= (data.y<<16)&0xffff0000;
+
+  return idx;  
 }
 
 __kernel void collate_cps_initcount(
@@ -71,6 +95,123 @@ const short2 ext_tr
     critpt_cellid[2*idx + 1] = c.y+ext_bl.y;
     
     write_crit_pt_idx_to_pr_image(c,idx,cell_pr_img);
+  }
+}
+
+const sampler_t cell_own_sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
+
+short2 get_cell_own(short2 c,__read_only image2d_t  cell_own_image)
+{
+  int4 data; data.x = 0;data.y =0;data.z = 0;data.w = 0;
+
+  int2 imgcrd;
+
+  imgcrd.y = c.x;
+  imgcrd.x = c.y;
+
+  short2 own;
+  
+  data = read_imagei(cell_own_image, cell_own_sampler, imgcrd);
+
+  own.x = data.x;
+  own.y = data.y;
+
+  return own;
+}
+
+__kernel void count_critpt_incidences(
+__global short* critpt_cellid,
+__read_only image2d_t  cell_own_image,
+__global unsigned int* incidence_ct,
+unsigned int critpt_ct,
+const short2 ext_bl,
+const short2 ext_tr
+)
+{
+  int idx = get_global_id(0);
+  
+  if(idx >= critpt_ct)
+    return;
+
+  short2 c,bb_ext_sz;
+  c.x = critpt_cellid[2*idx +0]-ext_bl.x;
+  c.y = critpt_cellid[2*idx +1]-ext_bl.y;
+
+  bb_ext_sz.x = ext_tr.x-ext_bl.x;
+  bb_ext_sz.y = ext_tr.y-ext_bl.y;
+
+  unsigned int incidence_ct_out = 0;
+
+  if(get_cell_dim(c) == 1)
+  {
+    short2 ncells[4];
+
+    get_cell_facets(c,ncells);
+    get_cell_cofacets(c,ncells+2);
+
+    for(int i = 0 ; i < 4;++i)
+    {
+      if(is_cell_outside_true_boundry(ncells[i],bb_ext_sz) == 1)
+        continue;
+
+      short2 n_own = get_cell_own(ncells[i],cell_own_image);
+
+      if(n_own.x != -1 && n_own.y != -1)
+        incidence_ct_out++;      
+    }
+  }
+
+  incidence_ct[idx] = incidence_ct_out;
+}
+
+__kernel void write_critpt_incidences(
+__global short* critpt_cellid,
+__read_only image2d_t  cell_own_image,
+__read_only image2d_t  cell_pr_image,
+__global unsigned int* incidence_buf_offset,
+__global unsigned int* incidence_buf,
+unsigned int critpt_ct,
+const short2 ext_bl,
+const short2 ext_tr
+)
+{
+  int idx = get_global_id(0);
+
+  if(idx >= critpt_ct)
+    return;
+
+  short2 c,bb_ext_sz;
+  c.x = critpt_cellid[2*idx +0]-ext_bl.x;
+  c.y = critpt_cellid[2*idx +1]-ext_bl.y;
+
+  bb_ext_sz.x = ext_tr.x-ext_bl.x;
+  bb_ext_sz.y = ext_tr.y-ext_bl.y;
+  
+  unsigned int out_offset= incidence_buf_offset[idx];
+
+  if(get_cell_dim(c) == 1)
+  {
+    short2 ncells[4];
+
+    get_cell_facets(c,ncells);
+    get_cell_cofacets(c,ncells+2);
+
+    for(int i = 0 ; i < 4;++i)
+    {
+      if(is_cell_outside_true_boundry(ncells[i],bb_ext_sz) == 1)
+        continue;
+
+      short2 n_own = get_cell_own(ncells[i],cell_own_image);
+
+      if(n_own.x != -1 && n_own.y != -1)
+      {
+        unsigned int incident_idx = read_crit_pt_idx_from_pr_image(n_own,cell_pr_image);
+
+        incidence_buf[out_offset] = incident_idx;
+        
+        out_offset++;
+      }
+    }
   }
 }
 

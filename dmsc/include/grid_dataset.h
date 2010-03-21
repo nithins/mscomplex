@@ -67,19 +67,23 @@ private:
   };
 
 
-  rect_t           m_rect;
-  rect_t           m_ext_rect;
+  rect_t             m_rect;
+  rect_t             m_ext_rect;
 
-  varray_t         m_vertex_fns; // defined on the vertices of bounding rect
-  cellpair_array_t m_cell_pairs;
-  cellflag_array_t m_cell_flags;
-  cellid_list_t    m_critical_cells;
+  varray_t           m_vertex_fns; // defined on the vertices of bounding rect
+  cellpair_array_t   m_cell_pairs;
+  cellflag_array_t   m_cell_flags;
+  cellid_list_t      m_critical_cells;
 
-  cl_mem           m_cell_pair_img;
-  cl_mem           m_cell_flag_img;
-  cl_mem           m_critical_cells_buf;
+  critpt_idx_list_t  m_saddle_incidence_idx_offset;
+  critpt_idx_list_t  m_saddle_incidence_idx;
 
-  pt_comp_t        m_ptcomp;
+  cl_mem             m_cell_pair_img;
+  cl_mem             m_cell_flag_img;
+  cl_mem             m_critical_cells_buf;
+  cl_mem             m_cell_own_img;
+
+  pt_comp_t          m_ptcomp;
 
 public:
 

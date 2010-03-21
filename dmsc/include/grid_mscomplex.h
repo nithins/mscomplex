@@ -39,6 +39,8 @@ public:
   typedef rect_cmplx_t::point_def          rect_point_t;
   typedef rect_cmplx_t::size_def           rect_size_t;
   typedef std::vector<cellid_t>            cellid_list_t;
+  typedef unsigned int                     critpt_idx_t;
+  typedef std::vector<critpt_idx_t>        critpt_idx_list_t;
 
 };
 

@@ -14,7 +14,7 @@ cl_device_id s_device_id;             // compute device id
 cl_context s_context;                 // compute context
 cl_program s_grad_pgm;                // compute program
 cl_program s_coll_cps_pgm;            // compute program
-cl_program s_bfs_pgm;                // compute program
+cl_program s_bfs_pgm;                 // compute program
 PrefixScan s_pre_scan;                // prefix scanning program
 
 
@@ -222,6 +222,7 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
   clReleaseMemObject(m_cell_pair_img);
   clReleaseMemObject(m_cell_flag_img);
   clReleaseMemObject(m_critical_cells_buf);
+  clReleaseMemObject(m_cell_own_img);
 }
 
 #define _GET_GLOBAL(s,l)\
@@ -438,6 +439,10 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
 
   _LOG("Done bfs flood       t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
+  collect_saddle_conn_ocl(commands);
+
+  _LOG("Done cllct sddle con t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+
   clear_pair_flag_imgs_ocl();
 
   clReleaseCommandQueue(commands);
@@ -600,7 +605,6 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
   rect_size_t ext_sz = m_ext_rect.size();
 
   size_t cell_img_rgn[3] = {ext_sz[1]+1,ext_sz[0]+1,1};
-  size_t cell_img_ogn[3] = {0,0,0};
 
   int error_code;                       // error code returned from api calls
 
@@ -623,7 +627,7 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
   cell_own_imgfmt.image_channel_data_type = CL_SIGNED_INT16;
   cell_own_imgfmt.image_channel_order     = CL_RG;
 
-  cl_mem cell_own_img = clCreateImage2D
+  m_cell_own_img = clCreateImage2D
                         (s_context,CL_MEM_READ_WRITE,
                          &cell_own_imgfmt,cell_img_rgn[0],cell_img_rgn[1],0,
                          NULL,&error_code);
@@ -640,7 +644,7 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
 
   error_code  = 0;
   error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &cell_own_img);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_own_img);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_bl);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_tr);
 
@@ -684,8 +688,8 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
     error_code  = 0;
     error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
     error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_pair_img);
-    error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &cell_own_img);
-    error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &cell_own_img);
+    error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_own_img);
+    error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_own_img);
     error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &is_changed_buf);
     error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_bl);
     error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_tr);
@@ -707,18 +711,153 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
   }
   while(is_changed == 1);
 
-  read_n_log_cell_own_image(cell_own_img,commands,ext_sz);
-
   clReleaseMemObject(is_changed_buf);
-  clReleaseMemObject(cell_own_img);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to cell_own_img ");
+}
+template <typename T>
+void read_n_log_1D_buf(cl_command_queue &commands,cl_mem &buf,uint sz)
+{
+  T* h_buf= new T[sz];
 
+  int error_code;
+
+  error_code = clEnqueueReadBuffer(commands,buf,CL_TRUE,0,sz*sizeof(T),h_buf,0,NULL,NULL);
+
+  _CHECKCL_ERR_CODE(error_code,"failed to read buf");
+
+  for(uint i =0 ; i < sz; ++i)
+    std::cout<<h_buf[i]<<" ";
+  std::cout<<std::endl;
 }
 
 void GridDataset::collect_saddle_conn_ocl(cl_command_queue &commands)
 {
 
+  cl_kernel kernel;
+
+  int error_code;                       // error code returned from api calls
+
+  cl_short2 ext_bl,ext_tr;
+
+  ext_bl[0] = m_ext_rect.left();
+  ext_bl[1] = m_ext_rect.bottom();
+  ext_tr[0] = m_ext_rect.right();
+  ext_tr[1] = m_ext_rect.top();
+
+  uint critpt_ct = m_critical_cells.size();
+
+  uint incidence_ct_buf_sz = (critpt_ct+1)*sizeof(uint);
+
+  size_t local[] = {max_threads_1D};
+
+  size_t global[1];
+
+  global[0] = _GET_GLOBAL(critpt_ct,local[0]) ;
+
+  cl_mem incidence_ct_buf =
+      clCreateBuffer(s_context,CL_MEM_READ_WRITE,incidence_ct_buf_sz,
+                     NULL,&error_code);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to create incidence_ct_buf");
+
+  kernel = clCreateKernel(s_coll_cps_pgm, "count_critpt_incidences", &error_code);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to create count_critpt_incidences kernel");
+
+  // Set the arguments to our compute kernel
+  //
+  uint a = 0 ;
+
+  error_code  = 0;
+  error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_critical_cells_buf);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_own_img);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &incidence_ct_buf);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(uint), &critpt_ct);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_bl);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_tr);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to set args for count_critpt_incidences kernel");
+
+  error_code = clEnqueueNDRangeKernel(commands, kernel, 1, NULL,
+                                      global, local, 0, NULL, NULL);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to enqueue count_critpt_incidences kernel");
+
+  error_code = clFinish(commands);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to execute count_critpt_incidences kernel");
+
+  clReleaseKernel(kernel);
+
+  s_pre_scan.CreatePartialSumBuffers(critpt_ct+1,s_context);
+  s_pre_scan.PreScanBuffer(incidence_ct_buf,incidence_ct_buf,critpt_ct+1,commands);
+  s_pre_scan.ReleasePartialSums();
+
+  uint incidence_buf_ct = 0;
+
+  error_code = clEnqueueReadBuffer
+               (commands,incidence_ct_buf,CL_TRUE,incidence_ct_buf_sz-sizeof(uint),
+                sizeof(uint),&incidence_buf_ct,0,NULL,NULL);
+
+  uint incidence_buf_sz = incidence_buf_ct*sizeof(uint);
+
+  cl_mem incidence_buf =
+      clCreateBuffer(s_context,CL_MEM_READ_WRITE,incidence_buf_sz,
+                     NULL,&error_code);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to create incidence_buf");
+
+  kernel = clCreateKernel(s_coll_cps_pgm, "write_critpt_incidences", &error_code);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to create write_critpt_incidences kernel");
+
+  // Set the arguments to our compute kernel
+  //
+  a = 0 ;
+
+  error_code  = 0;
+  error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_critical_cells_buf);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_own_img);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_pair_img);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &incidence_ct_buf);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &incidence_buf);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(uint), &critpt_ct);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_bl);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_tr);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to set args for write_critpt_incidences kernel");
+
+  error_code = clEnqueueNDRangeKernel(commands, kernel, 1, NULL,
+                                      global, local, 0, NULL, NULL);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to enqueue write_critpt_incidences kernel");
+
+  error_code = clFinish(commands);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to execute write_critpt_incidences kernel");
+
+  clReleaseKernel(kernel);
+
+  m_saddle_incidence_idx_offset.resize(critpt_ct);
+
+  error_code =clEnqueueReadBuffer
+              (commands,incidence_ct_buf,CL_TRUE,0,incidence_ct_buf_sz-sizeof(uint),
+               m_saddle_incidence_idx_offset.data(),0,NULL,NULL);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to read back saddle inc idx offsets");
+
+  m_saddle_incidence_idx.resize(incidence_buf_ct);
+
+  error_code =clEnqueueReadBuffer
+              (commands,incidence_buf,CL_TRUE,0,incidence_buf_sz,
+               m_saddle_incidence_idx.data(),0,NULL,NULL);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to read back saddle inc idxs ");
+
+  clReleaseMemObject(incidence_ct_buf);
+
+  clReleaseMemObject(incidence_buf);
 }
 
 void connectCps (GridDataset::mscomplex_t *msgraph,

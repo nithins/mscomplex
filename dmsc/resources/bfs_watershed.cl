@@ -47,8 +47,8 @@ const short2 ext_tr
   
   if(is_cell_critical(flag) == 1)
   {
-    own.x = c.x + ext_bl.x;
-    own.y = c.y + ext_bl.y;
+    own.x = c.x ;
+    own.y = c.y ;
   }
   else
   {
