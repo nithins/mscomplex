@@ -17,6 +17,27 @@ cl_program s_coll_cps_pgm;            // compute program
 cl_program s_bfs_pgm;                 // compute program
 PrefixScan s_pre_scan;                // prefix scanning program
 
+enum eOclProgram
+{
+  OCLPROG_GRADIENT_ASSIGN=0,
+  OCLPROG_COLLATE_CRITPTS,
+  OCLPROG_BFS_WATERSHED,
+  OCLPROG_COUNT,
+};
+
+struct oclProgSourceInfo
+{
+  const char * sourcefile;
+  const char * additional_include;
+  const char * compilation_flags;
+};
+
+oclProgSourceInfo s_prog_sources[OCLPROG_COUNT] = {
+  {":/oclsources/assigngradient.cl",":/oclsources/common_funcs.cl",""},
+  {":/oclsources/collate_critpts.cl",":/oclsources/common_funcs.cl",""},
+  {":/oclsources/bfs_watershed.cl",":/oclsources/common_funcs.cl","-cl-opt-disable"},
+};
+
 
 
 const int max_threads_1D   = 128;
@@ -50,8 +71,8 @@ void compile_cl_program(std::string prog_filename,std::string header_filename,
   const char * prog_src_cptr= prog_src.c_str();
 
   prog = clCreateProgramWithSource
-               (context, 1, & prog_src_cptr,
-                NULL, &error_code);
+         (context, 1, & prog_src_cptr,
+          NULL, &error_code);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create program");
 
@@ -87,14 +108,14 @@ void compile_cl_program(std::string prog_filename,std::string header_filename,
 
     size_t bin_size;
     error_code = clGetProgramInfo(prog,CL_PROGRAM_BINARY_SIZES,
-                       sizeof(size_t),&bin_size,NULL);
+                                  sizeof(size_t),&bin_size,NULL);
 
     if(error_code != CL_SUCCESS)
     {
       char * ptx_buffer = new char[bin_size];
 
       clGetProgramInfo(prog,CL_PROGRAM_BINARIES,
-                      sizeof(ptx_buffer),&ptx_buffer,NULL);
+                       sizeof(ptx_buffer),&ptx_buffer,NULL);
 
       std::string ptx_filename(prog_src_qf.fileName().toStdString());
       ptx_filename += ".ptx";
@@ -217,7 +238,7 @@ void  GridDataset::read_pair_flag_imgs_ocl(cl_command_queue &commands)
 
 }
 
-void  GridDataset::clear_pair_flag_imgs_ocl()
+void  GridDataset::clear_buffers_ocl()
 {
   clReleaseMemObject(m_cell_pair_img);
   clReleaseMemObject(m_cell_flag_img);
@@ -229,15 +250,56 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
 (((s)/(2*(l)))*(2*(l)) + ((((s)%(2*(l))) == 0)?(0):(2*l)))
 
 
-    void GridDataset::assignGradients_ocl()
-{
 
-  create_pair_flag_imgs_ocl();
+    void  GridDataset::work_ocl()
+{
+  int error_code;                       // error code returned from api calls
 
   Timer timer;
 
   timer.start();
 
+  // Create a command commands
+  //
+  cl_command_queue commands = clCreateCommandQueue
+                              (s_context, s_device_id, 0, &error_code);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to create commands queue");
+
+  create_pair_flag_imgs_ocl();
+
+  _LOG("Created data imgs    t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+
+  assignGradients_ocl(commands);
+
+  _LOG("Gradient Assignment  t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+
+  read_pair_flag_imgs_ocl(commands);
+
+  _LOG("Done reading results t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+
+  collateCritcalPoints_ocl(commands);
+
+  _LOG("Done cp collation    t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+
+  assignCellOwnerExtrema_ocl(commands);
+
+  _LOG("Done bfs flood       t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+
+  collect_saddle_conn_ocl(commands);
+
+  _LOG("Done cllct sddle con t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+
+  clear_buffers_ocl();
+
+  error_code = clReleaseCommandQueue(commands);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to release commands queue");
+}
+
+
+void GridDataset::assignGradients_ocl(cl_command_queue &commands)
+{
   int error_code;                       // error code returned from api calls
 
   rect_size_t int_sz = m_rect.size();
@@ -253,18 +315,11 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
   global[0] = _GET_GLOBAL(int_sz[0]+1,local[0]) ;
   global[1] = _GET_GLOBAL(int_sz[1]+1,local[0]) ;
 
-  // Create a command commands
-  //
-  cl_command_queue commands = clCreateCommandQueue
-                              (s_context, s_device_id, 0, &error_code);
-
-  _CHECKCL_ERR_CODE(error_code,"Failed to create commands queue")
-
-  // Create the compute kernel in the program we wish to run
+  // Create assign gradient kernel
   //
   cl_kernel kernel = clCreateKernel(s_grad_pgm, "assign_gradient", &error_code);
 
-  _CHECKCL_ERR_CODE(error_code,"Failed to create assign gradient kernel")
+  _CHECKCL_ERR_CODE(error_code,"Failed to create assign gradient kernel");
 
   // Create the input and output arrays in device memory for our calculation
   //
@@ -279,9 +334,7 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
                        &vert_fn_imgfmt,vert_img_rgn[0],vert_img_rgn[1],0,
                        m_vertex_fns.data(),&error_code);
 
-  _CHECKCL_ERR_CODE(error_code,"Failed to create cell fn texture")
-
-  _LOG("Done tranfer Data    t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
+  _CHECKCL_ERR_CODE(error_code,"Failed to create cell fn texture");
 
   cl_short2 int_bl,int_tr,ext_bl,ext_tr;
 
@@ -309,18 +362,16 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_bl);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_tr);
 
-  _CHECKCL_ERR_CODE(error_code,"Failed to set assign grad kern args")
+  _CHECKCL_ERR_CODE(error_code,"Failed to set assign grad kern args");
 
   error_code = clEnqueueNDRangeKernel(commands, kernel, 2, NULL,
                                       global, local, 0, NULL, NULL);
 
-  _CHECKCL_ERR_CODE(error_code,"Failed to enque assign grad kernel")
+  _CHECKCL_ERR_CODE(error_code,"Failed to enque assign grad kernel");
 
   // Wait for the command commands to get serviced before launching next kernel
   //
   clFinish(commands);
-
-  _LOG("Done gradient part 1 t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
   // Release what we dont need anymore
   //
@@ -344,7 +395,7 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_bl);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_tr);
 
-  _CHECKCL_ERR_CODE(error_code,"Failed to set complete_pairings arguments")
+  _CHECKCL_ERR_CODE(error_code,"Failed to set complete_pairings arguments");
 
   global[0] = _GET_GLOBAL(ext_sz[0]+1,local[0]) ;
   global[1] = _GET_GLOBAL(ext_sz[1]+1,local[0]) ;
@@ -358,8 +409,6 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
   //
   clFinish(commands);
   clReleaseKernel(kernel);
-
-  _LOG("Done gradient part 2 t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
 
   kernel = clCreateKernel(s_grad_pgm, "mark_boundrypairs_critical_1", &error_code);
 
@@ -379,7 +428,7 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_bl);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_tr);
 
-  _CHECKCL_ERR_CODE(error_code,"Failed to set mark_boundrypairs_critical_1 arguments")
+  _CHECKCL_ERR_CODE(error_code,"Failed to set mark_boundrypairs_critical_1 arguments");
 
   global[0] = _GET_GLOBAL(ext_sz[0]+1,local[0]);
   global[1] = _GET_GLOBAL(ext_sz[1]+1,local[0]);
@@ -410,7 +459,7 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_bl);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_tr);
 
-  _CHECKCL_ERR_CODE(error_code,"Failed to set mark_boundrypairs_critical_2 arguments")
+  _CHECKCL_ERR_CODE(error_code,"Failed to set mark_boundrypairs_critical_2 arguments");
 
   global[0] = _GET_GLOBAL(ext_sz[0]+1,local[0]);
   global[1] = _GET_GLOBAL(ext_sz[1]+1,local[0]);
@@ -424,28 +473,6 @@ void  GridDataset::clear_pair_flag_imgs_ocl()
   //
   clFinish(commands);
   clReleaseKernel(kernel);
-
-  _LOG("Done marking bc prs  t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
-
-  read_pair_flag_imgs_ocl(commands);
-
-  _LOG("Done reading results t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
-
-  collateCritcalPoints_ocl(commands);
-
-  _LOG("Done cp collation    t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
-
-  assignCellOwnerExtrema_ocl(commands);
-
-  _LOG("Done bfs flood       t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
-
-  collect_saddle_conn_ocl(commands);
-
-  _LOG("Done cllct sddle con t = "<<timer.getElapsedTimeInMilliSec()<<" ms");
-
-  clear_pair_flag_imgs_ocl();
-
-  clReleaseCommandQueue(commands);
 
 }
 
@@ -508,7 +535,7 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
   uint crit_pt_ct = 0 ;
 
   clEnqueueWriteBuffer(commands,critpt_idx_buf,CL_TRUE,critpt_idx_buf_sz -sizeof(uint),
-                      sizeof(uint),&crit_pt_ct,0,NULL,NULL);
+                       sizeof(uint),&crit_pt_ct,0,NULL,NULL);
 
   s_pre_scan.CreatePartialSumBuffers(grid_size+1,s_context);
   s_pre_scan.PreScanBuffer(critpt_idx_buf,critpt_idx_buf,grid_size+1,commands);
@@ -557,7 +584,7 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
   m_critical_cells.resize(crit_pt_ct);
 
   error_code = clEnqueueReadBuffer(commands,m_critical_cells_buf,CL_TRUE,0,
-                      crit_pt_id_buf_sz,m_critical_cells.data(),0,NULL,NULL);
+                                   crit_pt_id_buf_sz,m_critical_cells.data(),0,NULL,NULL);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to read critpt_id_buf");
 
@@ -628,9 +655,9 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
   cell_own_imgfmt.image_channel_order     = CL_RG;
 
   m_cell_own_img = clCreateImage2D
-                        (s_context,CL_MEM_READ_WRITE,
-                         &cell_own_imgfmt,cell_img_rgn[0],cell_img_rgn[1],0,
-                         NULL,&error_code);
+                   (s_context,CL_MEM_READ_WRITE,
+                    &cell_own_imgfmt,cell_img_rgn[0],cell_img_rgn[1],0,
+                    NULL,&error_code);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create owner image");
 
@@ -716,7 +743,7 @@ void GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
   _CHECKCL_ERR_CODE(error_code,"Failed to cell_own_img ");
 }
 template <typename T>
-void read_n_log_1D_buf(cl_command_queue &commands,cl_mem &buf,uint sz)
+    void read_n_log_1D_buf(cl_command_queue &commands,cl_mem &buf,uint sz)
 {
   T* h_buf= new T[sz];
 
@@ -1018,19 +1045,19 @@ GridDataset::GridDataset (const rect_t &r,const rect_t &e) :
 
 void GridDataset::init()
 {
-//  rect_point_t p1,p2;
-//
-//  p1 = m_rect.bottom_left();
-//  p2 = m_rect.top_right();
-//
-//  p1[0] += 2;
-//  p1[1] += 2;
-//  p2[0] -= 2;
-//  p2[1] -= 2;
-//
-//  m_rect = rect_t(p1,p2);
-//
-//  _LOG(m_rect);
+  //  rect_point_t p1,p2;
+  //
+  //  p1 = m_rect.bottom_left();
+  //  p2 = m_rect.top_right();
+  //
+  //  p1[0] += 2;
+  //  p1[1] += 2;
+  //  p2[0] -= 2;
+  //  p2[1] -= 2;
+  //
+  //  m_rect = rect_t(p1,p2);
+  //
+  //  _LOG(m_rect);
 
   rect_size_t   s = m_ext_rect.size();
 

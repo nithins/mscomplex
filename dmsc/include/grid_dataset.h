@@ -99,14 +99,18 @@ public:
 
   void  create_pair_flag_imgs_ocl();
 
-  void  clear_pair_flag_imgs_ocl();
+  void  clear_buffers_ocl();
 
   // actual algorithm work
 public:
 
   void  assignGradients();
 
-  void  assignGradients_ocl();
+  void  computeConnectivity(mscomplex_t *msgraph);
+
+  void  work_ocl();
+
+  void  assignGradients_ocl(cl_command_queue &commands);
 
   void  read_pair_flag_imgs_ocl(cl_command_queue &commands);
 
@@ -115,8 +119,6 @@ public:
   void  assignCellOwnerExtrema_ocl(cl_command_queue &commands);
 
   void  collect_saddle_conn_ocl(cl_command_queue &commands);
-
-  void  computeConnectivity(mscomplex_t *msgraph);
 
   // sub tasks of the above routines
 public:

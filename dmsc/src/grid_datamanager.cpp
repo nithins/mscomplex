@@ -168,7 +168,7 @@ void GridDataManager::clearInteriorGrad(uint start,uint end )
 void GridDataManager::workPiece ( GridDataPiece *dp )
 {
   if(m_use_ocl == true)
-    dp->dataset->assignGradients_ocl();
+    dp->dataset->work_ocl();
   else
     dp->dataset->assignGradients();
 
