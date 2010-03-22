@@ -15,6 +15,8 @@ if(_ERROR != CL_SUCCESS) throw std::runtime_error(_MESSAGE);
 
 #define _GET_GLOBAL(s,l) (((s)/(2*(l)))*(2*(l)) + ((((s)%(2*(l))) == 0)?(0):(2*l)))
 
+#define _LOG_TIMINGS 1
+
 #ifdef _LOG_TIMINGS
 
 #define _START_TIMER(TIMERVAR) Timer TIMERVAR; TIMERVAR.start();
@@ -56,7 +58,7 @@ enum eOclProgram
 oclProgInfo s_programs[OCLPROG_END-OCLPROG_BEGIN] = {
   {":/oclsources/assigngradient.cl",":/oclsources/common_funcs.cl","",NULL},
   {":/oclsources/collate_critpts.cl",":/oclsources/common_funcs.cl","",NULL},
-  {":/oclsources/bfs_watershed.cl",":/oclsources/common_funcs.cl","-cl-opt-disable",NULL},
+  {":/oclsources/bfs_watershed.cl",":/oclsources/common_funcs.cl","",NULL},
 };
 
 struct oclKernelSourceInfo
@@ -663,36 +665,33 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
   _CHECKCL_ERR_CODE(error_code,"Failed to reelase critpt_id_buf");
 }
 
-void read_n_log_cell_own_image(cl_mem img,cl_command_queue &commands,
-                               GridDataset::rect_size_t sz)
+template<typename T>
+void read_n_log_2D_img
+    (cl_mem img,cl_command_queue &commands,uint sz_x,uint sz_y)
 {
   int error_code;
 
   size_t cell_img_ogn[3] = {0,0,0};
 
-  size_t cell_img_rgn[3] = {sz[1]+1,sz[0]+1,1};
+  size_t cell_img_rgn[3] = {sz_x,sz_y,1};
 
-  GridDataset::cellpair_array_t cell_own;
-
-  cell_own.resize ( (boost::extents[1+sz[0]][1+sz[1]]));
+  T* h_buf = new T[sz_x*sz_y];
 
   error_code = clEnqueueReadImage( commands, img, CL_TRUE,
                                    cell_img_ogn,cell_img_rgn,0,0,
-                                   cell_own.data(),0,NULL,NULL);
+                                   h_buf,0,NULL,NULL);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to read cell own image");
 
 
-  for(int x = 0;x< sz[0]+1;++x)
+  for(int y = 0;y< sz_y;++y)
   {
-    for(int y = 0;y< sz[1]+1;++y)
-    {
-      GridDataset::cellid_t own = cell_own(GridDataset::cellid_t(x,y));
-
-      std::cout<<own<<" ";
-    }
+    for(int x = 0;x< sz_x;++x)
+      std::cout<<h_buf[y*sz_x+x]<<" ";
     std::cout<<std::endl;
   }
+
+  delete []h_buf;
 
 }
 
@@ -726,10 +725,15 @@ int  GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
   cell_own_imgfmt.image_channel_data_type = CL_SIGNED_INT16;
   cell_own_imgfmt.image_channel_order     = CL_RG;
 
-  m_cell_own_img = clCreateImage2D
-                   (s_context,CL_MEM_READ_WRITE,
-                    &cell_own_imgfmt,cell_img_rgn[0],cell_img_rgn[1],0,
-                    NULL,&error_code);
+  cl_mem cell_own_img[2];
+
+  for(int i = 0 ;i < 2; ++i)
+  {
+    cell_own_img[i] = clCreateImage2D
+                     (s_context,CL_MEM_READ_WRITE,
+                      &cell_own_imgfmt,cell_img_rgn[0],cell_img_rgn[1],0,
+                      NULL,&error_code);
+  }
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create owner image");
 
@@ -739,7 +743,8 @@ int  GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
 
   error_code  = 0;
   error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
-  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_own_img);
+  error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_pair_img);
+  error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &cell_own_img[0]);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_bl);
   error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_tr);
 
@@ -769,8 +774,6 @@ int  GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
   {
     is_changed = 0;
 
-    iteration_ct++;
-
     error_code = clEnqueueWriteBuffer(commands,is_changed_buf,CL_TRUE,
                                       0,sizeof(uint),&is_changed,0,NULL,NULL);
 
@@ -781,10 +784,8 @@ int  GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
     a = 0 ;
 
     error_code  = 0;
-    error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_flag_img);
-    error_code  = clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_pair_img);
-    error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_own_img);
-    error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &m_cell_own_img);
+    error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &cell_own_img[iteration_ct%2]);
+    error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &cell_own_img[(1+iteration_ct)%2]);
     error_code |= clSetKernelArg(kernel, a++, sizeof(cl_mem), &is_changed_buf);
     error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_bl);
     error_code |= clSetKernelArg(kernel, a++, sizeof(cl_short2), &ext_tr);
@@ -805,12 +806,20 @@ int  GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
                                      0,sizeof(uint),&is_changed,0,NULL,NULL);
 
     _CHECKCL_ERR_CODE(error_code,"Failed to read to is_changed_buf");
+
+    iteration_ct++;
   }
   while(is_changed == 1);
+
+  m_cell_own_img = cell_own_img[iteration_ct%2];
 
   error_code = clReleaseMemObject(is_changed_buf);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to release ischanged buf ");
+
+  error_code = clReleaseMemObject(cell_own_img[(iteration_ct+1)%2]);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to release unsaved cell_own_img buf ");
 
   return iteration_ct;
 }
@@ -859,6 +868,8 @@ void GridDataset::collect_saddle_conn_ocl(cl_command_queue &commands)
                      NULL,&error_code);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create incidence_ct_buf");
+
+  rect_size_t sz = m_ext_rect.size();
 
   kernel = s_kernels[OCLKERN_COUNT_CRITPT_INCIDENCES]._handle;
 
