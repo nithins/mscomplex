@@ -32,7 +32,7 @@ string usage_string(const char * progname)
 IModel * parse_quad_grid(string cmdline)
 {
 
-  const boost::regex file_re ( "(-qf ([[:alnum:]\\./]+))" );
+  const boost::regex file_re ( "(-qf ([[:alnum:]\\./_]+))" );
 
   const boost::regex dim_re ( "(-d ([[:digit:]]+) ([[:digit:]]+))" );
 
@@ -103,7 +103,7 @@ IModel * parse_quad_grid(string cmdline)
 IModel * parse_grid(string cmdline)
 {
 
-  const boost::regex file_re ( "(-gf ([[:alnum:]\\./]+))" );
+  const boost::regex file_re ( "(-gf ([[:alnum:]\\./_]+))" );
 
   const boost::regex dim_re ( "(-d ([[:digit:]]+) ([[:digit:]]+))" );
 

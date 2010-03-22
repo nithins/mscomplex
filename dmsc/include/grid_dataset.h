@@ -110,6 +110,8 @@ public:
 
   void  work_ocl();
 
+  void  work_grad_collate_ocl();
+
   void  writeout_connectivity_ocl(mscomplex_t *msgraph);
 
   void  assignGradients_ocl(cl_command_queue &commands);

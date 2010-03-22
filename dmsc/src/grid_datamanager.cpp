@@ -95,6 +95,9 @@ void GridDataManager::readFile ( )
 
   fstream infile ( m_filename.c_str(),fstream::in|fstream::binary );
 
+  if(infile.is_open() == false)
+    throw std::invalid_argument("data file not found");
+
   m_pieces[dp_idx]->dataset->init();
 
   if(dp_idx+1 < m_pieces.size())
@@ -103,12 +106,12 @@ void GridDataManager::readFile ( )
   for ( uint y = 0 ; y <m_size_y;y++ )
     for ( uint x = 0 ; x < m_size_x;x++ )
     {
-    double data;
+    GridDataset::cell_fn_t data;
 
     if ( infile.eof() )
       throw std::length_error(string(" Premature end of file "));
 
-    infile.read ( reinterpret_cast<char *> ( &data),sizeof ( double ) );
+    infile.read ( reinterpret_cast<char *> ( &data),sizeof ( GridDataset::cell_fn_t) );
 
     cellid_t p(2*x,2*y);
 
@@ -170,13 +173,9 @@ void GridDataManager::workPiece ( GridDataPiece *dp )
   if(m_use_ocl != true)
   {
     dp->dataset->assignGradients();
+  }
 
-    dp->dataset->computeConnectivity(dp->msgraph);
-  }
-  else
-  {
-    dp->dataset->writeout_connectivity_ocl(dp->msgraph);
-  }
+  dp->dataset->computeConnectivity(dp->msgraph);
 }
 
 void mergePiecesUp
@@ -207,7 +206,7 @@ void GridDataManager::workPiecesInRange_ocl(uint start,uint end )
   {
     GridDataPiece * dp = m_pieces[i];
 
-    dp->dataset->work_ocl();
+    dp->dataset->work_grad_collate_ocl();
   }
   _LOG ( "End ocl work  for pieces from "<<start<<" to "<<end );
 }

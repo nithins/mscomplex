@@ -53,7 +53,7 @@ enum eOclProgram
   OCLPROG_END,
 };
 
-oclProgInfo s_prog_sources[OCLPROG_END-OCLPROG_BEGIN] = {
+oclProgInfo s_programs[OCLPROG_END-OCLPROG_BEGIN] = {
   {":/oclsources/assigngradient.cl",":/oclsources/common_funcs.cl","",NULL},
   {":/oclsources/collate_critpts.cl",":/oclsources/common_funcs.cl","",NULL},
   {":/oclsources/bfs_watershed.cl",":/oclsources/common_funcs.cl","-cl-opt-disable",NULL},
@@ -202,17 +202,17 @@ void GridDataset::init_opencl()
   for(uint pgm_idx = OCLPROG_BEGIN;pgm_idx != OCLPROG_END; pgm_idx++ )
   {
 
-    compile_cl_program(s_prog_sources[pgm_idx].sourcefile,
-                       s_prog_sources[pgm_idx].additional_include,
-                       s_prog_sources[pgm_idx].compilation_flags,
-                       s_prog_sources[pgm_idx]._handle,
+    compile_cl_program(s_programs[pgm_idx].sourcefile,
+                       s_programs[pgm_idx].additional_include,
+                       s_programs[pgm_idx].compilation_flags,
+                       s_programs[pgm_idx]._handle,
                        s_context,s_device_id);
   }
 
   for(uint kern_idx = OCLKERN_BEGIN;kern_idx != OCLKERN_END; kern_idx++ )
   {
     s_kernels[kern_idx]._handle =
-        clCreateKernel(s_prog_sources[s_kernels[kern_idx].program_idx]._handle,
+        clCreateKernel(s_programs[s_kernels[kern_idx].program_idx]._handle,
                        s_kernels[kern_idx].kernel_name, &error_code);
 
     _CHECKCL_ERR_CODE(error_code,"Failed to create kernel");
@@ -230,7 +230,7 @@ void GridDataset::stop_opencl()
 
   for(uint pgm_idx = OCLPROG_BEGIN;pgm_idx != OCLPROG_END; pgm_idx++ )
   {
-    clReleaseProgram(s_prog_sources[pgm_idx]._handle);
+    clReleaseProgram(s_programs[pgm_idx]._handle);
   }
   clReleaseContext(s_context);
   s_pre_scan.cleanup();
@@ -309,10 +309,57 @@ void  GridDataset::read_pair_img_ocl(cl_command_queue &commands)
 
 void  GridDataset::clear_buffers_ocl()
 {
-  clReleaseMemObject(m_cell_pair_img);
-  clReleaseMemObject(m_cell_flag_img);
-  clReleaseMemObject(m_critical_cells_buf);
-  clReleaseMemObject(m_cell_own_img);
+  if(m_cell_pair_img != NULL)
+    clReleaseMemObject(m_cell_pair_img);
+
+  if(m_cell_flag_img != NULL)
+    clReleaseMemObject(m_cell_flag_img);
+
+  if(m_critical_cells_buf != NULL)
+    clReleaseMemObject(m_critical_cells_buf);
+
+  if(m_cell_own_img != NULL)
+    clReleaseMemObject(m_cell_own_img);
+
+  m_cell_pair_img = NULL;
+  m_cell_flag_img = NULL;
+  m_critical_cells_buf = NULL;
+  m_cell_own_img = NULL;
+}
+
+void GridDataset::work_grad_collate_ocl()
+{
+  int error_code;                       // error code returned from api calls
+
+  _START_TIMER(timer);
+
+  cl_command_queue commands = clCreateCommandQueue
+                              (s_context, s_device_id, 0, &error_code);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to create commands queue");
+
+  create_pair_flag_imgs_ocl();
+
+  _LOG_TIMER(timer,"Created data imgs");
+
+  assignGradients_ocl(commands);
+
+  _LOG_TIMER(timer,"Gradient Assignment Done");
+
+  read_pair_img_ocl(commands);
+  read_flag_img_ocl(commands);
+
+  _LOG_TIMER(timer,"Read back Pair and flag results");
+
+  collateCritcalPoints_ocl(commands);
+
+  _LOG_TIMER(timer,"Collated crit pts");
+
+  clear_buffers_ocl();
+
+  error_code = clReleaseCommandQueue(commands);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to release commands queue");
 }
 
 void  GridDataset::work_ocl()
@@ -321,8 +368,6 @@ void  GridDataset::work_ocl()
 
   _START_TIMER(timer);
 
-  // Create a command commands
-  //
   cl_command_queue commands = clCreateCommandQueue
                               (s_context, s_device_id, 0, &error_code);
 
@@ -1102,30 +1147,22 @@ void track_gradient_tree_bfs
 }
 
 GridDataset::GridDataset (const rect_t &r,const rect_t &e) :
-    m_rect (r),m_ext_rect (e),m_ptcomp(this)
+    m_rect (r),m_ext_rect (e),m_ptcomp(this),
+    m_cell_pair_img(NULL),
+    m_cell_flag_img(NULL),
+    m_critical_cells_buf(NULL),
+    m_cell_own_img(NULL)
 {
 
   // TODO: assert that the given rect is of even size..
   //       since each vertex is in the even positions
   //
+
+
 }
 
 void GridDataset::init()
 {
-  //  rect_point_t p1,p2;
-  //
-  //  p1 = m_rect.bottom_left();
-  //  p2 = m_rect.top_right();
-  //
-  //  p1[0] += 2;
-  //  p1[1] += 2;
-  //  p2[0] -= 2;
-  //  p2[1] -= 2;
-  //
-  //  m_rect = rect_t(p1,p2);
-  //
-  //  _LOG(m_rect);
-
   rect_size_t   s = m_ext_rect.size();
 
   m_vertex_fns.resize (boost::extents[1+s[0]/2][1+s[1]/2]);
