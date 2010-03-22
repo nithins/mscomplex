@@ -160,12 +160,15 @@ void GridDataManager::readFile ( )
 
 void GridDataManager::clearInteriorGrad(uint start,uint end )
 {
+  _LOG("Begin Clear Interior grad");
+
   for(uint i = start ; i < end; ++i)
   {
     GridDataPiece *dp = m_pieces[i];
-    dp->dataset->clear_graddata();
+    //dp->dataset->clear_graddata();
     delete dp->dataset;
   }
+  _LOG("End Clear Interior grad");
 }
 
 void GridDataManager::workPiece ( GridDataPiece *dp )
@@ -407,7 +410,7 @@ GridDataManager::GridDataManager
       u_int        num_levels,
       bool         single_threaded_mode,
       bool         use_ocl,
-      u_int        num_canc):
+      double       simp_tresh):
     m_filename(filename),
     m_size_x(size_x),
     m_size_y(size_y),
@@ -415,7 +418,7 @@ GridDataManager::GridDataManager
     m_single_threaded_mode(single_threaded_mode),
     m_bShowCriticalPointLabels(false),
     m_use_ocl(use_ocl),
-    m_num_canc(num_canc)
+    m_simp_tresh(simp_tresh)
 {
 
   m_controller = IModelController::Create();
@@ -441,7 +444,7 @@ GridDataManager::GridDataManager
     {
       mergePiecesUp_mt();
 
-      m_pieces[m_pieces.size()-1]->msgraph->simplify_un_simplify(num_canc);
+      m_pieces[m_pieces.size()-1]->msgraph->simplify_un_simplify(m_simp_tresh);
 
       mergePiecesDown_mt();
     }
@@ -450,7 +453,7 @@ GridDataManager::GridDataManager
 
       mergePiecesUp_st();
 
-      m_pieces[m_pieces.size()-1]->msgraph->simplify_un_simplify(num_canc);
+      m_pieces[m_pieces.size()-1]->msgraph->simplify_un_simplify(m_simp_tresh);
 
       mergePiecesDown_st();
 

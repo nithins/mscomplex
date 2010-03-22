@@ -24,7 +24,7 @@ string usage_string(const char * progname)
       "[--buffer-zone-width <buf-zone-width>]"\
       "[-st]"\
       "[-ocl]"\
-      "[--num-cancellations <num>]"<<endl;
+      "[--simp-tresh 0.<tresh>]"<<endl;
 
   return ss.str();
 }
@@ -113,7 +113,7 @@ IModel * parse_grid(string cmdline)
 
   const boost::regex ocl_re ( "(-ocl)" );
 
-  const boost::regex num_canc_re ( "(--num-cancellations ([[:digit:]]+))" );
+  const boost::regex num_canc_re ( "(--simp-tresh (0.[[:digit:]]+))" );
 
   uint   size_x = 0, size_y = 0;
 
@@ -125,7 +125,7 @@ IModel * parse_grid(string cmdline)
 
   uint   num_levels  = 1;
 
-  uint   num_canc = 0;
+  double   simp_tresh= 0.0;
 
   boost::smatch matches;
 
@@ -174,11 +174,11 @@ IModel * parse_grid(string cmdline)
   {
     string num_canc_str ( matches[2].first,matches[2].second );
 
-    num_canc = atoi ( num_canc_str.c_str() );
+    simp_tresh = atof ( num_canc_str.c_str() );
   }
 
   return new GridDataManager
-      (filename,size_x,size_y,num_levels,single_thread,use_ocl,num_canc);
+      (filename,size_x,size_y,num_levels,single_thread,use_ocl,simp_tresh);
 }
 
 
@@ -189,7 +189,7 @@ int main ( int argc, char *argv[] )
   const boost::regex gf_re ( "(-gf )");
 
 
-  //  try
+  try
   {
     boost::shared_ptr<IFramework> framework(IFramework::Create ( argc, argv ));
 
@@ -220,11 +220,12 @@ int main ( int argc, char *argv[] )
 
     framework->Exec();
   }
-  //  catch(std::exception &e)
-  //  {
-  //    _LOG(usage_string(argv[0]));
-  //    _LOG(e.what());
-  //  }
+  catch(std::exception &e)
+  {
+    _LOG(usage_string(argv[0]));
+    _LOG(e.what());
+    throw;
+  }
 
   return 0;
 }

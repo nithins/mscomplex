@@ -243,7 +243,7 @@ void GridMSComplex::merge_down(mscomplex_t& msc1,mscomplex_t& msc2)
 
       critpt_t *dest_cp = msc->m_cps[dest_cp_idx];
 
-      if(!src_in_msc || !src_pair_in_msc)
+      if(!src_in_msc || !src_pair_in_msc || !dest_cp->isBoundryCancelable)
       {
         uint dest_pair_cp_idx  = msc->m_id_cp_map[src_pair_cp->cellid];
         critpt_t *dest_pair_cp = msc->m_cps[dest_pair_cp_idx];
@@ -379,7 +379,7 @@ struct persistence_comparator_t
 };
 
 void GridMSComplex::simplify(crit_idx_pair_list_t & canc_pairs_list,
-                             uint max_cancellations)
+                             double simplification_treshold)
 {
   typedef std::priority_queue
       <crit_idx_pair_t,crit_idx_pair_list_t,persistence_comparator_t>
@@ -391,6 +391,8 @@ void GridMSComplex::simplify(crit_idx_pair_list_t & canc_pairs_list,
 
   // add every edge in the descending manifold of the critical point
 
+  cell_fn_t max_persistence = 0.0;
+
   for(uint i = 0 ;i < m_cps.size();++i)
   {
     critpt_t *cp = m_cps[i];
@@ -398,13 +400,16 @@ void GridMSComplex::simplify(crit_idx_pair_list_t & canc_pairs_list,
     for(const_conn_iter_t it = cp->des.begin();it != cp->des.end() ;++it)
     {
       canc_pair_priq.push(std::make_pair(i,*it));
+
+      cell_fn_t persistence = std::abs(m_cp_fns[i]-m_cp_fns[*it]);
+
+      max_persistence = std::max(persistence,max_persistence );
     }
   }
 
   uint num_cancellations = 0;
 
-  while (canc_pair_priq.size() !=0 &&
-      num_cancellations != max_cancellations)
+  while (canc_pair_priq.size() !=0)
   {
     crit_idx_pair_t canc_pair = canc_pair_priq.top();
 
@@ -415,6 +420,11 @@ void GridMSComplex::simplify(crit_idx_pair_list_t & canc_pairs_list,
 
     critpt_t * cp1 = m_cps[v1];
     critpt_t * cp2 = m_cps[v2];
+
+    cell_fn_t persistence = std::abs(m_cp_fns[v1]-m_cp_fns[v2]);
+
+    if((double)persistence/(double)max_persistence > simplification_treshold)
+      break;
 
     // pop the topmost item in the priority queue and cancel
 
@@ -458,11 +468,11 @@ void GridMSComplex::un_simplify(const crit_idx_pair_list_t &canc_pairs_list)
   }
 }
 
-void GridMSComplex::simplify_un_simplify(uint max_cancellations )
+void GridMSComplex::simplify_un_simplify(double simplification_treshold)
 {
   crit_idx_pair_list_t canc_pairs_list;
 
-  simplify(canc_pairs_list,max_cancellations);
+  simplify(canc_pairs_list,simplification_treshold);
 
   un_simplify(canc_pairs_list);
 }

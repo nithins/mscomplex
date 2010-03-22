@@ -63,9 +63,9 @@ public:
   cp_fn_list_t  m_cp_fns;
 
   // call these functions only at the highest levels
-  void simplify_un_simplify(uint max_cancellations );
+  void simplify_un_simplify(double simplification_treshold );
 
-  void simplify(crit_idx_pair_list_t &,uint max_cancellations);
+  void simplify(crit_idx_pair_list_t &,double simplification_treshold);
 
   void un_simplify(const crit_idx_pair_list_t &);
 
