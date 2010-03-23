@@ -98,27 +98,6 @@ const short2 ext_tr
   }
 }
 
-const sampler_t cell_own_sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
-
-short2 get_cell_own(short2 c,__read_only image2d_t  cell_own_image)
-{
-  int4 data; data.x = 0;data.y =0;data.z = 0;data.w = 0;
-
-  int2 imgcrd;
-
-  imgcrd.y = c.x;
-  imgcrd.x = c.y;
-
-  short2 own;
-  
-  data = read_imagei(cell_own_image, cell_own_sampler, imgcrd);
-
-  own.x = data.x;
-  own.y = data.y;
-
-  return own;
-}
-
 __kernel void count_critpt_incidences(
 __global short* critpt_cellid,
 __read_only image2d_t  cell_own_image,
@@ -154,9 +133,9 @@ const short2 ext_tr
       if(is_cell_outside_true_boundry(ncells[i],bb_ext_sz) == 1)
         continue;
 
-      short2 n_own = get_cell_own(ncells[i],cell_own_image);
+      short2 n_own = read_from_owner_image(ncells[i],cell_own_image,ext_bl);
 
-      if(n_own.x != -1 && n_own.y != -1)
+      if(is_cell_outside_true_boundry(n_own,bb_ext_sz) == 0)
         incidence_ct_out++;      
     }
   }
@@ -201,9 +180,9 @@ const short2 ext_tr
       if(is_cell_outside_true_boundry(ncells[i],bb_ext_sz) == 1)
         continue;
 
-      short2 n_own = get_cell_own(ncells[i],cell_own_image);
+      short2 n_own = read_from_owner_image(ncells[i],cell_own_image,ext_bl);
 
-      if(n_own.x != -1 && n_own.y != -1)
+      if(is_cell_outside_true_boundry(n_own,bb_ext_sz) == 0)
       {
         unsigned int incident_idx = read_crit_pt_idx_from_pr_image(n_own,cell_pr_image);
 

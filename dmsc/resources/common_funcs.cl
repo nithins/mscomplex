@@ -195,3 +195,51 @@ short2  get_cell_pair(short2 c,short2 ext_bl, __read_only image2d_t cell_pr_img)
 
   return pr;
 }
+
+const sampler_t cell_own_sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
+
+void write_to_owner_image(short2 c,short2 data, __write_only image2d_t cell_own_image,short2 ext_bl)
+{
+  int2 imgcrd;
+
+  imgcrd.x = c.y;
+  imgcrd.y = c.x;
+
+  int4 data_val;
+
+  data_val.x = data.x;
+  data_val.y = data.y;
+  data_val.z = 0;
+  data_val.w = 0;
+
+  if(data.x != -1 && data.y != -1)
+  {
+    data_val.x += ext_bl.x ;
+    data_val.y += ext_bl.y ;
+  }
+
+  write_imagei(cell_own_image, imgcrd,data_val);
+}
+
+short2 read_from_owner_image(short2 c, __read_only image2d_t cell_own_image,short2 ext_bl)
+{
+  int2 imgcrd;
+
+  imgcrd.x = c.y;
+  imgcrd.y = c.x;
+
+  int4 data_val = read_imagei(cell_own_image,cell_own_sampler,imgcrd);
+
+  short2 own;
+
+  own.x = data_val.x;
+  own.y = data_val.y;
+
+  if(data_val.x != -1 && data_val.y != -1)
+  {
+    own.x -= ext_bl.x ;
+    own.y -= ext_bl.y ;
+  }
+
+  return own;
+}

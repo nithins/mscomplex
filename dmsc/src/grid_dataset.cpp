@@ -15,8 +15,6 @@ if(_ERROR != CL_SUCCESS) throw std::runtime_error(_MESSAGE);
 
 #define _GET_GLOBAL(s,l) (((s)/(2*(l)))*(2*(l)) + ((((s)%(2*(l))) == 0)?(0):(2*l)))
 
-#define _LOG_TIMINGS 1
-
 #ifdef _LOG_TIMINGS
 
 #define _START_TIMER(TIMERVAR) Timer TIMERVAR; TIMERVAR.start();

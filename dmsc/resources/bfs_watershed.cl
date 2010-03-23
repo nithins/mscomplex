@@ -3,42 +3,6 @@
 
 // #include <common_funcs.cl>
 
-const sampler_t cell_own_sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
-
-void write_to_owner_image(short2 c,short2 data, __write_only image2d_t cell_own_image)
-{
-  int2 imgcrd;
-
-  imgcrd.x = c.y;
-  imgcrd.y = c.x;
-
-  int4 data_val;
-
-  data_val.x = data.x;
-  data_val.y = data.y;
-  data_val.z = 0;
-  data_val.w = 0;
-
-  write_imagei(cell_own_image, imgcrd,data_val);
-}
-
-short2 read_from_owner_image(short2 c, __read_only image2d_t cell_own_image)
-{
-  int2 imgcrd;
-
-  imgcrd.x = c.y;
-  imgcrd.y = c.x;
-
-  int4 data_val = read_imagei(cell_own_image,cell_own_sampler,imgcrd);
-
-  short2 own;
-
-  own.x = data_val.x;
-  own.y = data_val.y;
-
-  return own;
-}
-
 __kernel void dobfs_markowner_extrema_init(
 __read_only  image2d_t  cell_fg_img,
 __read_only  image2d_t  cell_pr_img,
@@ -97,7 +61,7 @@ const short2 ext_tr
         inf_cell = cets[inf_idx];
     }          
   }
-  write_to_owner_image(c,inf_cell,cell_own_image_out);
+  write_to_owner_image(c,inf_cell,cell_own_image_out,ext_bl);
 }
 
 __kernel void dobfs_markowner_extrema(
@@ -120,14 +84,14 @@ const short2 ext_tr
      c.y > bb_ext_sz.y)
     return;
 
-  short2 own = read_from_owner_image(c,cell_own_image_in);
+  short2 own = read_from_owner_image(c,cell_own_image_in,ext_bl);
 
   short2 own_own = own;
 
-  if(own.x != -1 && own.y != -1)
-    own_own = read_from_owner_image(own,cell_own_image_in);
+  if(is_cell_outside_true_boundry(own,bb_ext_sz) == 0) 
+    own_own = read_from_owner_image(own,cell_own_image_in,ext_bl);
   
-  write_to_owner_image(c,own_own,cell_own_image_out);
+  write_to_owner_image(c,own_own,cell_own_image_out,ext_bl);
 
   if(own_own.x != own.x || own_own.y != own.y)
     g_changed[0] = 1;
