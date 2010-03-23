@@ -75,10 +75,19 @@ public:
 
   void merge_down(mscomplex_t& msc1,mscomplex_t& msc2);
 
-  GridMSComplex(rect_t r,rect_t e):m_rect(r),m_ext_rect(e)
-  {
-  }
+  GridMSComplex(rect_t r,rect_t e):m_rect(r),m_ext_rect(e){}
+
+  GridMSComplex(){}
 };
 
 
+namespace boost
+{
+  namespace serialization
+  {
+    template<class Archive>
+    void serialize(Archive & ar, GridMSComplex & g, const unsigned int );
+
+  } // namespace serialization
+}
 #endif

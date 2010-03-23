@@ -476,3 +476,72 @@ void GridMSComplex::simplify_un_simplify(double simplification_treshold)
 
   un_simplify(canc_pairs_list);
 }
+
+#include <boost/serialization/vector.hpp>
+#include <boost/serialization/array.hpp>
+#include <boost/serialization/map.hpp>
+#include <boost/serialization/set.hpp>
+#include <boost/serialization/base_object.hpp>
+#include <boost/archive/text_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
+
+namespace boost
+{
+  namespace serialization
+  {
+
+    template<class Archive>
+    void serialize(Archive & ar, grid_types_t::rect_point_t & r, const unsigned int )
+    {
+      typedef boost::array<grid_types_t::rect_point_t::value_type,grid_types_t::rect_point_t::static_size> rect_point_base_t;
+
+      ar & boost::serialization::base_object<rect_point_base_t>(r);
+    }
+
+    template<class Archive>
+    void serialize(Archive & ar, GridMSComplex::critpt_t & c, const unsigned int )
+    {
+      ar & c.cellid;
+      ar & c.asc;
+      ar & c.des;
+      ar & c.isBoundryCancelable;
+      ar & c.isCancelled;
+      ar & c.isOnStrangulationPath;
+      ar & c.pair_idx;
+    }
+
+
+    template<class Archive>
+    void serialize(Archive & ar, grid_types_t::rect_t & r, const unsigned int )
+    {
+      ar & r.bl;
+      ar & r.tr;
+    }
+
+    template<class Archive>
+    void serialize(Archive & ar, GridMSComplex & g, const unsigned int )
+    {
+      ar & g.m_rect;
+      ar & g.m_ext_rect;
+      ar & g.m_cp_fns;
+      ar & g.m_id_cp_map;
+      ar & g.m_cps;
+    }
+
+  } // namespace serialization
+}
+
+// without the explicit instantiations below, the program will
+// fail to link for lack of instantiantiation of the above function
+// The impls are visible only in this file to save compilation time..
+
+template void boost::serialization::serialize<boost::archive::text_iarchive>(
+    boost::archive::text_iarchive & ar,
+    GridMSComplex & g,
+    const unsigned int file_version
+);
+template void boost::serialization::serialize<boost::archive::text_oarchive>(
+    boost::archive::text_oarchive & ar,
+    GridMSComplex & g,
+    const unsigned int file_version
+);

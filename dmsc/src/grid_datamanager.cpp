@@ -24,6 +24,8 @@
 #include <boost/thread.hpp>
 #include <boost/bind.hpp>
 #include <boost/regex.hpp>
+#include <boost/archive/text_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
 
 #include <modelcontroller.h>
 
@@ -50,9 +52,9 @@ void GridDataManager::createPieces_quadtree(rect_t r,rect_t e,u_int level )
   if(level == 0)
   {
     stringstream ss;
-    ss<<r;
+    ss<<m_pieces.size();
 
-    GridDataPiece *dp = new GridDataPiece();
+    GridDataPiece *dp = new GridDataPiece(ss.str());
     dp->dataset = new GridDataset(r,e);
     dp->msgraph = new GridMSComplex(r,e);
     m_pieces.push_back(dp);
@@ -171,6 +173,36 @@ void GridDataManager::clearInteriorGrad(uint start,uint end )
   _LOG("End Clear Interior grad");
 }
 
+void read_msgraph_from_archive(GridDataPiece * dp)
+{
+  std::string filename("dp_msgraph_");
+  filename += dp->label();
+
+  std::ifstream ifs(filename.c_str());
+
+  boost::archive::text_iarchive ia(ifs);
+
+  dp->msgraph = new GridDataPiece::mscomplex_t;
+
+  ia >> (*dp->msgraph);
+}
+
+void write_msgraph_to_archive(GridDataPiece * dp)
+{
+  std::string filename("dp_msgraph_");
+  filename += dp->label();
+
+  std::ofstream ofs(filename.c_str());
+
+  boost::archive::text_oarchive oa(ofs);
+
+  oa << (*dp->msgraph);
+
+  delete dp->msgraph;
+  dp->msgraph = NULL;
+
+}
+
 void GridDataManager::workPiece ( GridDataPiece *dp )
 {
   if(m_use_ocl != true)
@@ -184,27 +216,75 @@ void GridDataManager::workPiece ( GridDataPiece *dp )
     dp->dataset->writeout_connectivity_ocl(dp->msgraph);
   }
 
+  if(m_compute_out_of_core == true)
+  {
+    write_msgraph_to_archive(dp);
+  }
 }
 
 void mergePiecesUp
     ( GridDataPiece  *dp,
       GridDataPiece  *dp1,
-      GridDataPiece  *dp2)
+      GridDataPiece  *dp2,
+      bool is_src_archived,
+      bool archive_dest)
 {
 
   if(dp1->level != dp2->level)
       throw std::logic_error("dps must have same level");
 
+  if(is_src_archived == true)
+  {
+    read_msgraph_from_archive(dp1);
+    read_msgraph_from_archive(dp2);
+  }
+
   dp->level         = dp1->level+1;
   dp->msgraph       = GridMSComplex::merge_up(*dp1->msgraph,*dp2->msgraph);
+
+  if(is_src_archived == true)
+  {
+    delete dp1->msgraph;dp1->msgraph = NULL;
+    delete dp2->msgraph;dp2->msgraph = NULL;
+  }
+
+  if(archive_dest == true)
+  {
+    write_msgraph_to_archive(dp);
+  }
 }
 
 void mergePiecesDown
     ( GridDataPiece  * dp,
       GridDataPiece  * dp1,
-      GridDataPiece  * dp2)
+      GridDataPiece  * dp2,
+      bool is_src_archived,
+      bool is_dest_archived)
 {
+
+  if(is_src_archived)
+    read_msgraph_from_archive(dp);
+
+  if(is_dest_archived)
+  {
+    read_msgraph_from_archive(dp1);
+    read_msgraph_from_archive(dp2);
+  }
+
   dp->msgraph->merge_down(*dp1->msgraph,*dp2->msgraph);
+
+  if(is_src_archived)
+  {
+    delete dp->msgraph;dp->msgraph = NULL;
+  }
+
+  if(is_dest_archived)
+  {
+    write_msgraph_to_archive(dp1);
+    write_msgraph_to_archive(dp2);
+  }
+
+
 }
 
 void GridDataManager::workPiecesInRange_ocl(uint start,uint end )
@@ -283,18 +363,27 @@ void GridDataManager::mergePiecesUp_mt( )
 
   for(uint i = 0;i<num_leafs-1;++i)
   {
-    m_pieces.push_back(new GridDataPiece);
+    stringstream ss;
+    ss<<m_pieces.size();
+
+    m_pieces.push_back(new GridDataPiece(ss.str()));
   }
 
-  uint p_start = 0,p_end = num_leafs;
+  boost::thread ** threads = new boost::thread*[ num_parallel];
 
-  for(uint i = m_num_levels ; i >= 1;--i)
+  uint i_incr = num_parallel*2;
+
+  for ( uint i = 0; i<m_pieces.size()-1; i+=i_incr)
   {
-    boost::thread ** threads = new boost::thread*[ (p_end -p_start)/2];
-
     uint threadno = 0;
 
-    for ( uint j = p_start ; j < p_end; j+=2)
+    if(i_incr+i > m_pieces.size() && i_incr > 1)
+      i_incr = i_incr>>1;
+
+    bool src_archived = m_compute_out_of_core;
+    bool archive_dest = m_compute_out_of_core&&(i_incr != 2);
+
+    for(int j = i ; j < i+i_incr; j +=2 )
     {
       _LOG("Kicking off Merge Up "<<j<<" "<<j+1<<"->"<<num_leafs+j/2);
 
@@ -302,20 +391,21 @@ void GridDataManager::mergePiecesUp_mt( )
       GridDataPiece *dp2 = m_pieces[j+1];
       GridDataPiece *dp  = m_pieces[num_leafs+j/2];
       threads[threadno++] = new boost::thread
-                            ( boost::bind ( &mergePiecesUp,dp,dp1,dp2 ));
+                            ( boost::bind ( &mergePiecesUp,dp,dp1,dp2,src_archived,archive_dest ));
     }
 
     threadno = 0;
 
-    for ( uint j = p_start ; j < p_end; j+=2)
+    for(int j = i ; j < i+i_incr; j +=2 )
     {
       threads[threadno]->join();
+      delete threads[threadno];
       _LOG ( "thread "<<threadno++<<" joint" );
-
     }
-    p_start = p_end;
-    p_end  += 0x01<<i-1;
   }
+
+  delete []threads;
+
 }
 
 void GridDataManager::mergePiecesUp_st( )
@@ -326,18 +416,24 @@ void GridDataManager::mergePiecesUp_st( )
 
   for(uint i = 0;i<num_leafs-1;++i)
   {
-    m_pieces.push_back(new GridDataPiece);
+    stringstream ss;
+    ss<<m_pieces.size();
+
+    m_pieces.push_back(new GridDataPiece(ss.str()));
   }
 
   for ( uint i = 0;i<m_pieces.size()-1; i+=2)
   {
+    bool src_archived  = m_compute_out_of_core;
+    bool archive_dest  = m_compute_out_of_core&&(num_leafs+i/2 != m_pieces.size()-1);
+
     GridDataPiece *dp1 = m_pieces[i];
     GridDataPiece *dp2 = m_pieces[i+1];
     GridDataPiece *dp  = m_pieces[num_leafs+i/2];
 
     _LOG(" Merge Up "<<i<<" "<<i+1<<"->"<<num_leafs+i/2);
 
-    mergePiecesUp(dp,dp1,dp2);
+    mergePiecesUp(dp,dp1,dp2,src_archived,archive_dest);
   }
 
 }
@@ -357,11 +453,14 @@ void GridDataManager::mergePiecesDown_st()
            num_nodes - 2*j<<" "<<
            num_nodes - 2*j-1);
 
+      bool src_archived  = m_compute_out_of_core&&((p_end - p_start) != 1);
+      bool dest_archived = m_compute_out_of_core;
+
       GridDataPiece *dp  = m_pieces[num_nodes- j];
       GridDataPiece *dp1 = m_pieces[num_nodes- 2*j];
       GridDataPiece *dp2 = m_pieces[num_nodes- 2*j-1];
 
-      mergePiecesDown(dp,dp1,dp2);
+      mergePiecesDown(dp,dp1,dp2,src_archived,dest_archived);
     }
   }
 }
@@ -370,15 +469,20 @@ void GridDataManager::mergePiecesDown_mt()
 {
   uint num_nodes = (0x01<<(m_num_levels+1))-1;
 
-  for(uint i = 0 ; i < m_num_levels;++i)
+  uint i_incr = 1;
+
+  boost::thread ** threads = new boost::thread*[num_parallel];
+
+  for ( int i = 1; i <= m_pieces.size()/2; )
   {
-    uint p_start = 0x01<<i,p_end = p_start<<1;
 
-    boost::thread ** threads = new boost::thread*[p_end -p_start];
+    uint threadno = 0 ;
 
-    uint threadno = 0;
+    bool src_archived  = m_compute_out_of_core && (i_incr != 1);
+    bool dest_archived = m_compute_out_of_core;
 
-    for ( uint j = p_start ; j < p_end; j++)
+
+    for ( int j = i; j < i+i_incr; j += 1)
     {
       _LOG("Kicking off Merge Down "<<
            num_nodes - j<<"->"<<
@@ -390,17 +494,27 @@ void GridDataManager::mergePiecesDown_mt()
       GridDataPiece *dp2 = m_pieces[num_nodes- 2*j-1];
 
       threads[threadno++] = new boost::thread
-                            ( boost::bind ( &mergePiecesDown,dp,dp1,dp2 ));
+                            ( boost::bind ( &mergePiecesDown,dp,dp1,dp2,src_archived,dest_archived ));
+
     }
 
     threadno = 0;
 
-    for ( uint j = p_start ; j < p_end; j++)
+    for ( int j = i; j < i+i_incr; j += 1)
     {
       threads[threadno]->join();
       _LOG ( "thread "<<threadno++<<" joint" );
     }
+
+    i+=i_incr;
+
+    if(i_incr < num_parallel)
+      i_incr <<= 1;
+
   }
+  delete []threads;
+
+  return;
 }
 
 GridDataManager::GridDataManager
@@ -410,7 +524,8 @@ GridDataManager::GridDataManager
       u_int        num_levels,
       bool         single_threaded_mode,
       bool         use_ocl,
-      double       simp_tresh):
+      double       simp_tresh,
+      bool         compute_out_of_core):
     m_filename(filename),
     m_size_x(size_x),
     m_size_y(size_y),
@@ -418,7 +533,8 @@ GridDataManager::GridDataManager
     m_single_threaded_mode(single_threaded_mode),
     m_bShowCriticalPointLabels(false),
     m_use_ocl(use_ocl),
-    m_simp_tresh(simp_tresh)
+    m_simp_tresh(simp_tresh),
+    m_compute_out_of_core(compute_out_of_core)
 {
 
   m_controller = IModelController::Create();
@@ -466,8 +582,6 @@ GridDataManager::GridDataManager
 
   if(m_use_ocl)
     GridDataset::stop_opencl();
-
-  logAllConnections("log/dp-");
 
   if ( m_single_threaded_mode == false )
     exit(0);
@@ -675,7 +789,7 @@ bool GridDataManager::WheelEvent
   return false;
 }
 
-GridDataPiece::GridDataPiece ():
+GridDataPiece::GridDataPiece (std::string l):
     dataset(NULL),
     msgraph(NULL),
     level(0),
@@ -684,7 +798,8 @@ GridDataPiece::GridDataPiece ():
     m_bShowMsGraph ( false ),
     m_bShowGrad ( false ),
     ren_surf(NULL),
-    ren_grad(NULL)
+    ren_grad(NULL),
+    m_label(l)
 {
   memset(ren_cp,0,sizeof(ren_cp));
   memset(ren_cp,0,sizeof(ren_cp_labels));
@@ -907,8 +1022,5 @@ void GridDataPiece::create_surf_ren()
 
 std::string GridDataPiece::label()
 {
-  std::stringstream ss;
-  ss<<level<<" "<<msgraph->m_rect;
-
-  return ss.str();
+  return m_label;
 }

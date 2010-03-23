@@ -121,6 +121,15 @@ public:
   MSComplex()
   {
   }
+
+  ~MSComplex()
+  {
+
+    std::for_each(m_cps.begin(),m_cps.end(),delete_ftor<critical_point>);
+
+    m_cps.clear();
+    m_id_cp_map.clear();
+  }
 };
 
 template <typename id_type,typename fn_type>

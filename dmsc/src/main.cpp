@@ -19,12 +19,14 @@ string usage_string(const char * progname)
 
   ss<<progname<<" ";
 
-  ss<<"-<qf/gf> <filename> -d <x_dim> <y_dim> "\
-      "[-l <levels>] "\
-      "[--buffer-zone-width <buf-zone-width>]"\
-      "[-st]"\
-      "[-ocl]"\
-      "[--simp-tresh 0.<tresh>]"<<endl;
+  ss<<"-<qf/gf> <filename> -d <x_dim> <y_dim>"\
+      " [-l <levels>] "\
+      " [--buffer-zone-width <buf-zone-width>]"\
+      " [-st]"\
+      " [-ocl]"\
+      " [--simp-tresh 0.<tresh>]"\
+      " [--out-of-core]"
+      <<endl;
 
   return ss.str();
 }
@@ -115,6 +117,8 @@ IModel * parse_grid(string cmdline)
 
   const boost::regex num_canc_re ( "(--simp-tresh (0.[[:digit:]]+))" );
 
+  const boost::regex out_of_core_re ( "(--out-of-core)" );
+
   uint   size_x = 0, size_y = 0;
 
   string filename;
@@ -122,6 +126,8 @@ IModel * parse_grid(string cmdline)
   bool   single_thread = false;
 
   bool   use_ocl = false;
+
+  bool   out_of_core_flag = false;
 
   uint   num_levels  = 1;
 
@@ -177,8 +183,13 @@ IModel * parse_grid(string cmdline)
     simp_tresh = atof ( num_canc_str.c_str() );
   }
 
+  if ( regex_search ( cmdline,matches, out_of_core_re ) )
+  {
+    out_of_core_flag = true;
+  }
+
   return new GridDataManager
-      (filename,size_x,size_y,num_levels,single_thread,use_ocl,simp_tresh);
+      (filename,size_x,size_y,num_levels,single_thread,use_ocl,simp_tresh,out_of_core_flag);
 }
 
 
@@ -189,7 +200,7 @@ int main ( int argc, char *argv[] )
   const boost::regex gf_re ( "(-gf )");
 
 
-  try
+// try
   {
     boost::shared_ptr<IFramework> framework(IFramework::Create ( argc, argv ));
 
@@ -220,12 +231,12 @@ int main ( int argc, char *argv[] )
 
     framework->Exec();
   }
-  catch(std::exception &e)
-  {
-    _LOG(usage_string(argv[0]));
-    _LOG(e.what());
-    throw;
-  }
+//  catch(std::exception &e)
+//  {
+//    _LOG(usage_string(argv[0]));
+//    _LOG(e.what());
+//    throw;
+//  }
 
   return 0;
 }

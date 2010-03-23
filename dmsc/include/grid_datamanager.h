@@ -72,7 +72,9 @@ struct GridDataPiece
   void create_grad_rens();
   void create_surf_ren();
 
-  GridDataPiece ( ) ;
+  GridDataPiece (std::string l);
+
+  std::string m_label;
 
   std::string label();
 };
@@ -103,6 +105,7 @@ public:
   double                       m_simp_tresh;
   bool                         m_single_threaded_mode;
   bool                         m_use_ocl;
+  bool                         m_compute_out_of_core;
 
   IModelController            *m_controller;
 
@@ -115,7 +118,8 @@ public:
         u_int        num_levels,
         bool         threaded_mode,
         bool         use_ocl,
-        double       simp_tresh);
+        double       simp_tresh,
+        bool         compute_out_of_core);
 
   virtual ~GridDataManager ();
 

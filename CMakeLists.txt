@@ -18,7 +18,7 @@ include(${QT_USE_FILE})
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
-find_package(Boost COMPONENTS regex thread)
+find_package(Boost COMPONENTS regex thread serialization)
 
 if(NOT Boost_FOUND)
   message(FATAL_ERROR "Cannot find boost")
