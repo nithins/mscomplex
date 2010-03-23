@@ -548,6 +548,9 @@ GridDataManager::GridDataManager
   _LOG ( "Starting Processing Peices" );
   _LOG ( "--------------------------" );
 
+  if(m_num_levels == 0 && m_compute_out_of_core)
+    m_compute_out_of_core = false;
+
   readFile ();
 
   {
@@ -586,8 +589,20 @@ GridDataManager::GridDataManager
   if ( m_single_threaded_mode == false )
     exit(0);
 
+  if(m_compute_out_of_core == true)
+  {
+    for(uint i = 0 ; i <m_pieces.size()-1;++i)
+    {
+      GridDataPiece *dp = m_pieces[i];
+
+      read_msgraph_from_archive(dp);
+    }
+  }
+
   for(uint i = 0 ; i <m_pieces.size();++i)
   {
+
+
     GridDataPiece *dp = m_pieces[i];
 
     dp->create_cp_rens();
