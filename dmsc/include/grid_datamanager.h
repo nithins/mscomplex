@@ -61,12 +61,19 @@ struct GridDataPiece
   bool m_bShowCps;
   bool m_bShowMsGraph;
   bool m_bShowGrad;
+  bool m_bShowCancCps;
+  bool m_bShowCancMsGraph;
 
   glutils::renderable_t  *ren_surf;
   glutils::renderable_t  *ren_grad;
+
   glutils::renderable_t  *ren_cp_labels[3];
   glutils::renderable_t  *ren_cp[3];
   glutils::renderable_t  *ren_cp_conns[2];
+
+  glutils::renderable_t  *ren_canc_cp_labels[3];
+  glutils::renderable_t  *ren_canc_cp[3];
+  glutils::renderable_t  *ren_canc_cp_conns[2];
 
   void create_cp_rens();
   void create_grad_rens();
@@ -197,9 +204,9 @@ private:
     TVA_SURF,
     TVA_CPS,
     TVA_GRAPH,
-    TVA_QUADS,
     TVA_GRAD,
-    TVA_CANCELABLE_PAIRS
+    TVA_CANC_CPS,
+    TVA_CANC_GRAPH,
   };
 
   void perform_tva_action ( const eTreeViewActions &,const bool & );
@@ -217,9 +224,9 @@ private slots:
   void show_surf_toggled ( bool state ) {perform_tva_action ( TVA_SURF,state );}
   void show_cps_toggled ( bool state ) {perform_tva_action ( TVA_CPS,state );}
   void show_graph_toggled ( bool state ) {perform_tva_action ( TVA_GRAPH,state );}
-  void show_quads_toggled ( bool state ) {perform_tva_action ( TVA_QUADS,state );}
   void show_grad_toggled ( bool state ) {perform_tva_action ( TVA_GRAD,state );}
-  void show_cancelable_pairs_toggled ( bool state ) {perform_tva_action ( TVA_CANCELABLE_PAIRS,state );}
+  void show_canc_cps_toggled ( bool state ) {perform_tva_action ( TVA_CANC_CPS,state );}
+  void show_canc_graph_toggled ( bool state ) {perform_tva_action ( TVA_CANC_GRAPH,state );}
 
 };
 

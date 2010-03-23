@@ -691,6 +691,23 @@ void GridDataManager::renderDataPiece ( GridDataPiece *dp ) const
     }
   }
 
+  if ( dp->m_bShowCancCps)
+  {
+    for(uint i = 0 ; i < 3;++i)
+    {
+      if(dp->ren_canc_cp[i])
+      {
+        glColor3dv(g_grid_cp_colors[i].data());
+
+        dp->ren_canc_cp[i]->render();
+
+        if(dp->ren_canc_cp_labels[i] &&
+           m_bShowCriticalPointLabels)
+          dp->ren_canc_cp_labels[i]->render();
+      }
+    }
+  }
+
   if ( dp->m_bShowMsGraph && dp->ren_cp_conns[0] && dp->ren_cp_conns[1])
   {
     glColor3f ( 0.0,0.5,1.0 );
@@ -698,6 +715,16 @@ void GridDataManager::renderDataPiece ( GridDataPiece *dp ) const
 
     glColor3f ( 1.0,0.5,0.0 );
     dp->ren_cp_conns[1]->render();
+
+  }
+
+  if ( dp->m_bShowCancMsGraph&& dp->ren_canc_cp_conns[0] && dp->ren_canc_cp_conns[1])
+  {
+    glColor3f ( 0.0,0.5,1.0 );
+    dp->ren_canc_cp_conns[0]->render();
+
+    glColor3f ( 1.0,0.5,0.0 );
+    dp->ren_canc_cp_conns[1]->render();
 
   }
 
@@ -812,13 +839,18 @@ GridDataPiece::GridDataPiece (std::string l):
     m_bShowCps ( false ),
     m_bShowMsGraph ( false ),
     m_bShowGrad ( false ),
+    m_bShowCancCps(false),
+    m_bShowCancMsGraph(false),
     ren_surf(NULL),
     ren_grad(NULL),
     m_label(l)
 {
   memset(ren_cp,0,sizeof(ren_cp));
-  memset(ren_cp,0,sizeof(ren_cp_labels));
-  memset(ren_cp,0,sizeof(ren_cp_conns));
+  memset(ren_cp_labels,0,sizeof(ren_cp_labels));
+  memset(ren_cp_conns,0,sizeof(ren_cp_conns));
+  memset(ren_canc_cp,0,sizeof(ren_canc_cp));
+  memset(ren_canc_cp_labels,0,sizeof(ren_canc_cp_labels));
+  memset(ren_canc_cp_conns,0,sizeof(ren_canc_cp_conns));
 }
 
 void  GridDataPiece::create_cp_rens()
@@ -828,10 +860,16 @@ void  GridDataPiece::create_cp_rens()
 
   std::vector<std::string>            crit_labels[3];
   std::vector<glutils::vertex_t>      crit_label_locations[3];
-
-  std::vector<glutils::vertex_t>      crit_locations;
   std::vector<glutils::point_idx_t>   crit_pt_idxs[3];
   std::vector<glutils::line_idx_t>    crit_conn_idxs[2];
+
+
+  std::vector<std::string>            crit_canc_labels[3];
+  std::vector<glutils::vertex_t>      crit_canc_label_locations[3];
+  std::vector<glutils::point_idx_t>   crit_canc_pt_idxs[3];
+  std::vector<glutils::line_idx_t>    crit_canc_conn_idxs[2];
+
+  std::vector<glutils::vertex_t>      crit_locations;
   std::map<uint,uint>                 crit_ms_idx_ren_idx_map;
 
   for(uint i = 0; i < msgraph->m_cps.size(); ++i)
@@ -847,16 +885,22 @@ void  GridDataPiece::create_cp_rens()
 
     ((ostream&)ss)<<c;
 
-    crit_labels[dim].push_back(ss.str());
-
     double x = c[0],y = msgraph->m_cp_fns[i],z=c[1];
 
-    crit_label_locations[dim].push_back(glutils::vertex_t(x,y,z) );
-
-    crit_pt_idxs[dim].push_back(glutils::point_idx_t(crit_locations.size()));
+    if(msgraph->m_cps[i]->isBoundryCancelable)
+    {
+      crit_canc_labels[dim].push_back(ss.str());
+      crit_canc_label_locations[dim].push_back(glutils::vertex_t(x,y,z) );
+      crit_canc_pt_idxs[dim].push_back(glutils::point_idx_t(crit_locations.size()));
+    }
+    else
+    {
+      crit_labels[dim].push_back(ss.str());
+      crit_label_locations[dim].push_back(glutils::vertex_t(x,y,z) );
+      crit_pt_idxs[dim].push_back(glutils::point_idx_t(crit_locations.size()));
+    }
 
     crit_ms_idx_ren_idx_map[i] = crit_locations.size();
-
     crit_locations.push_back(glutils::vertex_t(x,y,z));
   }
 
@@ -872,67 +916,58 @@ void  GridDataPiece::create_cp_rens()
                (crit_loc_bo,
                 glutils::make_buf_obj(crit_pt_idxs[i]),
                 glutils::make_buf_obj());
+
+    ren_canc_cp_labels[i] =
+        glutils::create_buffered_text_ren
+        (crit_canc_labels[i],crit_canc_label_locations[i]);
+
+    ren_canc_cp[i] =glutils::create_buffered_points_ren
+               (crit_loc_bo,
+                glutils::make_buf_obj(crit_canc_pt_idxs[i]),
+                glutils::make_buf_obj());
   }
 
-  for(uint i = 0; i < msgraph->m_cps.size(); ++i)
+  for(uint i = 0 ; i < msgraph->m_cps.size(); ++i)
   {
-    if(msgraph->m_cps[i]->isCancelled )
+    if(msgraph->m_cps[i]->isCancelled)
       continue;
+
+    conn_t *cp_acdc[] = {&msgraph->m_cps[i]->des,&msgraph->m_cps[i]->asc};
+
+    uint acdc_ct = 1;
+
+    if(msgraph->m_cps[i]->isBoundryCancelable)
+      acdc_ct = 2;
+
+    uint cp_ren_idx = crit_ms_idx_ren_idx_map[i];
 
     uint dim = GridDataset::s_getCellDim
                (msgraph->m_cps[i]->cellid);
 
-    if(dim == 2)
-      continue;
-
-    uint cp_ren_idx = crit_ms_idx_ren_idx_map[i];
-
-    for(conn_t::iterator it = msgraph->m_cps[i]->asc.begin();
-    it != msgraph->m_cps[i]->asc.end(); ++it)
+    for (uint j = 0 ; j < acdc_ct; ++j)
     {
-      if(msgraph->m_cps[*it]->isCancelled)
-        throw std::logic_error("this cancelled cp should not be present here");
+      for(conn_t::iterator it = cp_acdc[j]->begin();
+      it != cp_acdc[j]->end(); ++it)
+      {
+        if(msgraph->m_cps[*it]->isCancelled)
+          throw std::logic_error("this cancelled cp should not be present here");
 
-      uint conn_cp_ren_idx = crit_ms_idx_ren_idx_map[*it];
+        if(msgraph->m_cps[*it]->isBoundryCancelable)
+          throw std::logic_error("a true cp should not be connected to a bc cp");
 
-      crit_conn_idxs[dim].push_back
-          (glutils::line_idx_t(cp_ren_idx,conn_cp_ren_idx));
+        uint conn_cp_ren_idx = crit_ms_idx_ren_idx_map[*it];
 
-    }
-  }
-
-  for(uint i = 0; i < msgraph->m_cps.size(); ++i)
-  {
-    if(msgraph->m_cps[i]->isCancelled )
-      continue;
-
-    if(!msgraph->m_cps[i]->isBoundryCancelable)
-      continue;
-
-    uint dim = GridDataset::s_getCellDim
-               (msgraph->m_cps[i]->cellid);
-
-    if (dim ==0 )
-      continue;
-
-    dim--;
-
-    uint cp_ren_idx = crit_ms_idx_ren_idx_map[i];
-
-    for(conn_t::iterator it = msgraph->m_cps[i]->des.begin();
-    it != msgraph->m_cps[i]->des.end(); ++it)
-    {
-      if(msgraph->m_cps[*it]->isCancelled)
-        throw std::logic_error("this cancelled cp should not be present here");
-
-      if(msgraph->m_cps[*it]->isBoundryCancelable)
-        continue;
-
-      uint conn_cp_ren_idx = crit_ms_idx_ren_idx_map[*it];
-
-      crit_conn_idxs[dim].push_back
-          (glutils::line_idx_t(cp_ren_idx,conn_cp_ren_idx));
-
+        if(msgraph->m_cps[i]->isBoundryCancelable)
+        {
+          crit_canc_conn_idxs[dim-1+j].push_back
+              (glutils::line_idx_t(cp_ren_idx,conn_cp_ren_idx));
+        }
+        else
+        {
+          crit_conn_idxs[dim-1+j].push_back
+              (glutils::line_idx_t(cp_ren_idx,conn_cp_ren_idx));
+        }
+      }
     }
   }
 
@@ -942,7 +977,13 @@ void  GridDataPiece::create_cp_rens()
                       (crit_loc_bo,
                        glutils::make_buf_obj(crit_conn_idxs[i]),
                        glutils::make_buf_obj());
+
+    ren_canc_cp_conns[i] = glutils::create_buffered_lines_ren
+                      (crit_loc_bo,
+                       glutils::make_buf_obj(crit_canc_conn_idxs[i]),
+                       glutils::make_buf_obj());
   }
+
 }
 
 void GridDataPiece::create_grad_rens()

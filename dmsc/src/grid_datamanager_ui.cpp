@@ -67,6 +67,16 @@ bool GridDataManager::get_tva_state ( const eTreeViewActions &action )
       else ++num_unchecked_items;
       break;
 
+    case TVA_CANC_CPS:
+      if ( item->node->m_bShowCancCps) ++num_checked_items;
+      else ++num_unchecked_items;
+      break;
+
+    case TVA_CANC_GRAPH            :
+      if ( item->node->m_bShowCancMsGraph) ++num_checked_items;
+      else ++num_unchecked_items;
+      break;
+
     }
   }
 
@@ -101,6 +111,13 @@ void GridDataManager::perform_tva_action ( const eTreeViewActions &action, const
     case TVA_GRAD             :
       item->node->m_bShowGrad               = state;
       break;
+    case TVA_CANC_CPS             :
+      item->node->m_bShowCancCps            = state;
+      break;
+    case TVA_CANC_GRAPH             :
+      item->node->m_bShowCancMsGraph        = state;
+      break;
+
     default:
       break;
     }
@@ -127,8 +144,8 @@ void GridDataManager::on_datapiece_treeView_customContextMenuRequested ( const Q
   ADD_MENU_ACTION ( &menu, "show critical points", get_tva_state ( TVA_CPS ), show_cps_toggled );
   ADD_MENU_ACTION ( &menu, "show graph", get_tva_state ( TVA_GRAPH ), show_graph_toggled );
   ADD_MENU_ACTION ( &menu, "show grad", get_tva_state ( TVA_GRAD ), show_grad_toggled );
-
-
+  ADD_MENU_ACTION ( &menu, "show canc cps", get_tva_state ( TVA_CANC_CPS ), show_canc_cps_toggled );
+  ADD_MENU_ACTION ( &menu, "show canc graph", get_tva_state ( TVA_CANC_GRAPH ), show_canc_graph_toggled );
   menu.exec ( m_ui->datapiece_treeView->mapToGlobal ( pos ) );
 
 }
