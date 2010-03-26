@@ -7,6 +7,7 @@
 
 #include <QFile>
 #include <prefix_scan.h>
+#include <bitonic_sort.h>
 
 typedef GridDataset::cellid_t cellid_t;
 
@@ -33,8 +34,9 @@ _LOG("t = "<<TIMERVAR.getElapsedTimeInMilliSec()<<" ms "<<MESSAGE);
 #endif
 
 cl_device_id s_device_id;             // compute device id
-cl_context s_context;                 // compute context
-PrefixScan s_pre_scan;                // prefix scanning program
+cl_context   s_context;               // compute context
+PrefixScan   s_pre_scan;              // prefix scanning program
+BitonicSortProgram  s_bi_sort;               // bitonic sorting program
 
 struct oclProgInfo
 {
@@ -219,6 +221,8 @@ void GridDataset::init_opencl()
   }
 
   s_pre_scan.init(s_context,s_device_id);
+
+  s_bi_sort.initBitonicSort(s_context,s_device_id);
 }
 
 void GridDataset::stop_opencl()
@@ -232,8 +236,12 @@ void GridDataset::stop_opencl()
   {
     clReleaseProgram(s_programs[pgm_idx]._handle);
   }
+
   clReleaseContext(s_context);
+
   s_pre_scan.cleanup();
+
+  s_bi_sort.closeBitonicSort();
 
 }
 
@@ -285,8 +293,23 @@ void  GridDataset::read_flag_img_ocl(cl_command_queue &commands)
                                    m_cell_flags.data(),0,NULL,NULL);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to read back cell flag image");
+}
 
+void  GridDataset::read_own_img_ocl(cl_command_queue &commands)
+{
 
+  rect_size_t sz = m_ext_rect.size();
+
+  size_t cell_img_ogn[3] = {0,0,0};
+  size_t cell_img_rgn[3] = {sz[1]+1,sz[0]+1,1};
+
+  int error_code;
+
+  error_code = clEnqueueReadImage( commands, m_cell_own_img, CL_TRUE,
+                                   cell_img_ogn,cell_img_rgn,0,0,
+                                   m_cell_own.data(),0,NULL,NULL);
+
+  _CHECKCL_ERR_CODE(error_code,"Failed to read back cell flag image");
 }
 
 void  GridDataset::read_pair_img_ocl(cl_command_queue &commands)
@@ -398,11 +421,19 @@ void  GridDataset::work_ocl()
 
   _LOG_TIMER(timer,"Saddle incidence collection Done");
 
+  read_own_img_ocl(commands);
+
   clear_buffers_ocl();
 
   error_code = clReleaseCommandQueue(commands);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to release commands queue");
+}
+
+void  GridDataset::post_merge_work_ocl(mscomplex_t *msgraph)
+{
+  postMergeUpdateOwnerExtrema_ocl(msgraph);
+
 }
 
 
@@ -663,35 +694,109 @@ void GridDataset::collateCritcalPoints_ocl(cl_command_queue &commands)
   _CHECKCL_ERR_CODE(error_code,"Failed to reelase critpt_id_buf");
 }
 
-template<typename T>
-void read_n_log_2D_img
-    (cl_mem img,cl_command_queue &commands,uint sz_x,uint sz_y)
+
+
+
+template <typename T> struct log_2D_array
 {
-  int error_code;
-
-  size_t cell_img_ogn[3] = {0,0,0};
-
-  size_t cell_img_rgn[3] = {sz_x,sz_y,1};
-
-  T* h_buf = new T[sz_x*sz_y];
-
-  error_code = clEnqueueReadImage( commands, img, CL_TRUE,
-                                   cell_img_ogn,cell_img_rgn,0,0,
-                                   h_buf,0,NULL,NULL);
-
-  _CHECKCL_ERR_CODE(error_code,"Failed to read cell own image");
-
-
-  for(int y = 0;y< sz_y;++y)
+  void operator()(T* data,uint sz_x,uint sz_y)
   {
-    for(int x = 0;x< sz_x;++x)
-      std::cout<<h_buf[y*sz_x+x]<<" ";
-    std::cout<<std::endl;
+    for(int y = 0;y< sz_y;++y)
+    {
+      for(int x = 0;x< sz_x;++x)
+        std::cout<<data[y*sz_x+x];
+      std::cout<<std::endl;
+    }
+  }
+};
+
+
+template<typename T,typename array_logger_t = log_2D_array<T> >
+
+struct read_n_log_2D_img
+{
+  void operator()(cl_mem img,cl_command_queue &commands,
+                  uint sz_x,uint sz_y,array_logger_t& log_ftor)
+  {
+    int error_code;
+
+    size_t cell_img_ogn[3] = {0,0,0};
+
+    size_t cell_img_rgn[3] = {sz_x,sz_y,1};
+
+    T* h_buf = new T[sz_x*sz_y];
+
+
+    error_code = clEnqueueReadImage( commands, img, CL_TRUE,
+                                     cell_img_ogn,cell_img_rgn,0,0,
+                                     h_buf,0,NULL,NULL);
+
+    _CHECKCL_ERR_CODE(error_code,"Failed to read cell own image");
+
+    log_ftor(h_buf,sz_x,sz_y);
+
+    delete []h_buf;
   }
 
-  delete []h_buf;
+  void operator()(cl_mem img,cl_command_queue &commands,
+                  uint sz_x,uint sz_y)
+  {
+    array_logger_t array_logger;
+    (*this)(img,commands,sz_x,sz_y,array_logger);
+  }
+};
 
-}
+template<typename T,typename array_logger_t = log_2D_array<T> >
+struct read_n_log_2D_buf
+{
+  void operator()(cl_mem img,cl_command_queue &commands,
+                  uint sz_x,uint sz_y,array_logger_t& log_ftor)
+  {
+    int error_code;
+
+    T* h_buf = new T[sz_x*sz_y];
+
+    error_code = clEnqueueReadBuffer
+                 ( commands, img, CL_TRUE,0,sz_x*sz_y*sizeof(T),h_buf,0,NULL,NULL);
+
+    _CHECKCL_ERR_CODE(error_code,"Failed to read cell own image");
+
+    log_ftor(h_buf,sz_x,sz_y);
+
+    delete []h_buf;
+  }
+
+  void operator()(cl_mem img,cl_command_queue &commands,
+                  uint sz_x,uint sz_y)
+  {
+    array_logger_t array_logger;
+    (*this)(img,commands,sz_x,sz_y,array_logger);
+  }
+};
+
+struct check_n_log_array
+{
+  cellid_t m_c;
+
+  check_n_log_array(cellid_t c):m_c(c){}
+
+  void operator()(cellid_t* data,uint sz_x,uint sz_y)
+  {
+    std::cout<<sz_x<<"x"<<sz_y<<std::endl;
+
+    for(int x = 0;x< sz_x;++x)
+    {
+      for(int y = 0;y< sz_y;++y)
+      {
+        if(data[y*sz_x+x] == m_c)
+          std::cout<<"1 ";
+        else
+          std::cout<<"0 ";
+      }
+      std::cout<<std::endl;
+    }
+  }
+};
 
 int  GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
 {
@@ -728,9 +833,9 @@ int  GridDataset::assignCellOwnerExtrema_ocl(cl_command_queue &commands)
   for(int i = 0 ;i < 2; ++i)
   {
     cell_own_img[i] = clCreateImage2D
-                     (s_context,CL_MEM_READ_WRITE,
-                      &cell_own_imgfmt,cell_img_rgn[0],cell_img_rgn[1],0,
-                      NULL,&error_code);
+                      (s_context,CL_MEM_READ_WRITE,
+                       &cell_own_imgfmt,cell_img_rgn[0],cell_img_rgn[1],0,
+                       NULL,&error_code);
   }
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create owner image");
@@ -867,8 +972,6 @@ void GridDataset::collect_saddle_conn_ocl(cl_command_queue &commands)
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create incidence_ct_buf");
 
-  rect_size_t sz = m_ext_rect.size();
-
   kernel = s_kernels[OCLKERN_COUNT_CRITPT_INCIDENCES]._handle;
 
   uint a = 0 ;
@@ -954,6 +1057,213 @@ void GridDataset::collect_saddle_conn_ocl(cl_command_queue &commands)
   clReleaseMemObject(incidence_ct_buf);
 
   clReleaseMemObject(incidence_buf);
+}
+
+cellid_t get_cp_cellid(GridDataset::mscomplex_t *msgraph,uint idx)
+{
+  return msgraph->m_cps[idx]->cellid;
+}
+
+static uint ( GridDataset::*getcets[2] ) ( cellid_t,cellid_t * ) const =
+{
+  &GridDataset::getCellFacets,
+  &GridDataset::getCellCofacets
+};
+
+inline uint   GridDataset::getCellIncCells( cellid_t c,cellid_t * inc) const
+{
+  inc[0] = cellid_t (c[0]  ,c[1]+1);
+  inc[1] = cellid_t (c[0]  ,c[1]-1);
+  inc[2] = cellid_t (c[0]-1,c[1]);
+  inc[3] = cellid_t (c[0]+1,c[1]);
+  return 4;
+}
+
+int GridDataset::postMergeUpdateOwnerExtrema_ocl(mscomplex_t *msgraph)
+{
+
+  std::map<cellid_t,critpt_disc_t *> surv_crit_asc_disc_map;
+  std::map<cellid_t,critpt_disc_t *> surv_crit_des_disc_map;
+  std::vector<uint> surv_saddle_idxs;
+
+  _LOG("updating owner extrema");
+
+  // update local copy of owner extrema with the cancllation info
+  for(uint i = 0 ; i < msgraph->m_cps.size();++i)
+  {
+    critpt_t * cp = msgraph->m_cps[i];
+
+    int cp_dim = getCellDim(cp->cellid);
+
+    if(cp->isBoundryCancelable == true)
+    {
+      critpt_t * pair_cp = msgraph->m_cps[cp->pair_idx];
+
+      if( cp_dim == 1)
+      {
+        critpt_conn_t * cp_conn = (getCellDim(pair_cp->cellid) == 0)? (&cp->des):(&cp->asc);
+
+        if(cp_conn->size() != 1)
+        {
+          log_range(cp_conn->begin(),cp_conn->end(),boost::bind(&get_cp_cellid,msgraph,_1),"conns");
+
+          throw std::logic_error("I should be connected to exactly one surv extrema");
+        }
+
+        critpt_t * extrema_cp =msgraph->m_cps[*cp_conn->begin()];
+
+        if(pair_cp->pair_idx != i)
+          throw std::logic_error("My pair does not know Im paired with him");
+
+        if(m_rect.contains(cp->cellid))
+          m_cell_own(cp->cellid) = extrema_cp->cellid;
+
+        if(m_rect.contains(pair_cp->cellid))
+          m_cell_own(pair_cp->cellid) = extrema_cp->cellid;
+      }
+      else if(cp_dim == 2)
+      {
+        for(critpt_conn_t::iterator it = cp->des.begin() ;it!= cp->des.end();++it)
+        {
+          critpt_t * conn_saddle_cp  = msgraph->m_cps[*it];
+
+          if(m_rect.contains(pair_cp->cellid))
+            conn_saddle_cp->asc_disc.push_back(pair_cp->cellid);
+        }
+      }
+      else if(cp_dim == 0)
+      {
+        for(critpt_conn_t::iterator it = cp->asc.begin() ;it!= cp->asc.end();++it)
+        {
+          critpt_t * conn_saddle_cp  = msgraph->m_cps[*it];
+
+          if(m_rect.contains(pair_cp->cellid))
+            conn_saddle_cp->des_disc.push_back(pair_cp->cellid);
+        }
+      }
+    }
+    else// not boundry cancellabele
+    {
+      switch(cp_dim)
+      {
+      case 0 :
+        surv_crit_asc_disc_map.insert(std::make_pair(cp->cellid,&cp->asc_disc));
+        break;
+      case 1:
+        {
+          cellid_t inc_cells[4];
+
+          getCellIncCells(cp->cellid,inc_cells);
+
+          for(uint j = 0 ; j < 4 ; ++j)
+          {
+            if(m_rect.contains(inc_cells[j])
+              && isCellPaired(inc_cells[j])
+              && !isCellCritical(inc_cells[j])
+              )
+            {
+              critpt_disc_t * disc =
+                  (getCellDim(inc_cells[j]) ==0)?(&cp->des_disc):(&cp->asc_disc);
+
+              disc->push_back(getCellPairId(inc_cells[j]));
+            }
+          }
+          surv_saddle_idxs.push_back(i);
+
+          break;
+        }
+
+      case 2:
+        surv_crit_des_disc_map.insert(std::make_pair(cp->cellid,&cp->des_disc));
+      }
+    }
+  }
+
+  _LOG("adding zero cells to min");
+
+  // all 0 d cells are owned by some minima
+  for (cell_coord_t y = m_rect.bottom(); y <= m_rect.top();y += 2)
+  {
+    for (cell_coord_t x = m_rect.left(); x <= m_rect.right();x += 2)
+    {
+      cellid_t c (x,y);
+
+      cellid_t o = m_cell_own(c);
+
+      if(m_rect.contains(o))
+      {
+        o = m_cell_own(o);
+      }
+
+      if(o[0] != -1 && o[1] != -1)
+      {
+        surv_crit_asc_disc_map[o]->push_back(c);
+      }
+    }
+  }
+
+  _LOG("adding 2 cells to max");
+
+  // all 2 d cells are owned by some maxima
+  for (cell_coord_t y = m_rect.bottom()+1; y < m_rect.top();y += 2)
+  {
+    for (cell_coord_t x = m_rect.left()+1; x < m_rect.right();x += 2)
+    {
+      cellid_t c (x,y);
+
+      cellid_t o = m_cell_own(c);
+
+      if(m_rect.contains(o))
+      {
+        o = m_cell_own(o);
+      }
+
+      if(o[0] != -1 && o[1] != -1)
+      {
+        surv_crit_des_disc_map[o]->push_back(c);
+      }
+    }
+  }
+  // all surv saddles must now contain seed points to track their 1 manifold
+
+  for(uint i = 0 ;i < surv_saddle_idxs.size();++i)
+  {
+    critpt_t * cp = msgraph->m_cps[surv_saddle_idxs[i]];
+
+    critpt_disc_t * disc[] = {&cp->asc_disc,&cp->des_disc};
+
+    for(uint j = 0 ; j <2;++j)
+    {
+      uint path_cell_idx = 0;
+
+      while(path_cell_idx != disc[j]->size())
+      {
+        cellid_t path_cell = (*disc[j])[path_cell_idx];
+
+        cellid_t cets[2];
+
+        uint cet_ct = ( this->*getcets[j] )(path_cell,cets);
+
+        uint inf_idx = 0;
+
+        if(cet_ct >inf_idx &&
+           isCellPaired(cets[inf_idx]) &&
+           getCellPairId(cets[inf_idx]) == path_cell)
+          inf_idx = 1;
+
+        if(cet_ct > inf_idx &&
+           isCellPaired(cets[inf_idx]) &&
+           !isCellCritical(cets[inf_idx]) &&
+           m_rect.contains(getCellPairId(cets[inf_idx])))
+          disc[j]->push_back(getCellPairId(cets[inf_idx]));
+
+        path_cell_idx++;
+      }
+    }
+
+  }
+
+  return 0;
 }
 
 void connectCps (GridDataset::mscomplex_t *msgraph,
@@ -1108,12 +1418,6 @@ void track_gradient_tree_bfs
 {
   typedef GridDataset::cellid_t id_type;
 
-  static uint ( GridDataset::*getcets[2] ) ( id_type,id_type * ) const =
-  {
-    &GridDataset::getCellFacets,
-    &GridDataset::getCellCofacets
-  };
-
   std::queue<id_type> cell_queue;
 
   // mark here that that cellid has no parent.
@@ -1166,8 +1470,15 @@ GridDataset::GridDataset (const rect_t &r,const rect_t &e) :
   // TODO: assert that the given rect is of even size..
   //       since each vertex is in the even positions
   //
+}
 
-
+GridDataset::GridDataset () :
+    m_ptcomp(this),
+    m_cell_pair_img(NULL),
+    m_cell_flag_img(NULL),
+    m_critical_cells_buf(NULL),
+    m_cell_own_img(NULL)
+{
 }
 
 void GridDataset::init()
@@ -1177,6 +1488,7 @@ void GridDataset::init()
   m_vertex_fns.resize (boost::extents[1+s[0]/2][1+s[1]/2]);
   m_cell_flags.resize ( (boost::extents[1+s[0]][1+s[1]]));
   m_cell_pairs.resize ( (boost::extents[1+s[0]][1+s[1]]));
+  m_cell_own.resize ( (boost::extents[1+s[0]][1+s[1]]));
 
   for (int y = 0 ; y<=s[1];++y)
     for (int x = 0 ; x<=s[0];++x)
@@ -1189,6 +1501,7 @@ void GridDataset::init()
   m_cell_flags.reindex (bl);
 
   m_cell_pairs.reindex (bl);
+  m_cell_own.reindex (bl);
 }
 
 void GridDataset::clear_graddata()
@@ -1196,6 +1509,7 @@ void GridDataset::clear_graddata()
   m_vertex_fns.resize (boost::extents[0][0]);
   m_cell_flags.resize (boost::extents[0][0]);
   m_cell_pairs.resize (boost::extents[0][0]);
+  m_cell_own.resize (boost::extents[0][0]);
   m_critical_cells.clear();
 }
 

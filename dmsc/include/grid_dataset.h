@@ -45,14 +45,15 @@ public:
   };
 
   typedef GridMSComplex                     mscomplex_t;
-  typedef mscomplex_t::critical_point       critpt_t;
-  typedef critpt_t::connection_t            critpt_conn_t;
+  typedef MSComplex<grid_types_t::cellid_t>::critical_point                 critpt_t;
+  typedef MSComplex<grid_types_t::cellid_t>::critical_point::connection_t   critpt_conn_t;
+  typedef MSComplex<grid_types_t::cellid_t>::critical_point::disc_t         critpt_disc_t;
   typedef int8_t                            cell_flag_t;
   typedef boost::multi_array<cell_fn_t,2>   varray_t;
   typedef boost::multi_array<cellid_t,2>    cellpair_array_t;
   typedef boost::multi_array<cell_flag_t,2> cellflag_array_t;
 
-private:
+public:
 
   class pt_comp_t
   {
@@ -93,6 +94,13 @@ public:
 
   GridDataset ( const rect_t &r,const rect_t &e );
 
+  GridDataset ( );
+
+  ~GridDataset ( )
+  {
+    clear_graddata();
+  }
+
   void  init();
 
   void  set_cell_fn ( cellid_t c,cell_fn_t f );
@@ -112,6 +120,8 @@ public:
 
   void  work_ocl();
 
+  void  post_merge_work_ocl(mscomplex_t *msgraph);
+
   void  work_grad_collate_ocl();
 
   void  writeout_connectivity_ocl(mscomplex_t *msgraph);
@@ -122,11 +132,15 @@ public:
 
   void  read_flag_img_ocl(cl_command_queue &commands);
 
+  void  read_own_img_ocl(cl_command_queue &commands);
+
   void  collateCritcalPoints_ocl(cl_command_queue &commands);
 
   int   assignCellOwnerExtrema_ocl(cl_command_queue &commands);
 
   void  collect_saddle_conn_ocl(cl_command_queue &commands);
+
+  int   postMergeUpdateOwnerExtrema_ocl(mscomplex_t *msgraph);
 
   // sub tasks of the above routines
 public:
@@ -153,6 +167,8 @@ public:
   uint   getCellPoints ( cellid_t ,cellid_t  * ) const;
 
   uint   getCellFacets ( cellid_t ,cellid_t * ) const;
+
+  inline uint   getCellIncCells( cellid_t ,cellid_t * ) const;
 
   uint   getCellCofacets ( cellid_t ,cellid_t * ) const;
 
@@ -224,7 +240,13 @@ inline uint GridDataset::getCellDim ( cellid_t c ) const
   return ( ( c[0]&0x01 ) + ( c[1]&0x01 ) );
 }
 
+namespace boost
+{
+  namespace serialization
+  {
+    template<class Archive>
+    void serialize(Archive & ar, GridDataset & d, const unsigned int );
 
-
-
+  } // namespace serialization
+}
 #endif

@@ -81,4 +81,74 @@ class GridTreeModel : public QAbstractItemModel
     _treeitem *m_tree;
 };
 
+class RecursiveTreeItemSelectionModel:public QItemSelectionModel
+{
+    Q_OBJECT
+
+  public:
+    RecursiveTreeItemSelectionModel ( QAbstractItemModel * m,QTreeView * tv) :
+        QItemSelectionModel ( m),m_pTreeView ( tv) {}
+
+  public slots:
+
+    virtual void select ( const QModelIndex &index, QItemSelectionModel::SelectionFlags command )
+    {
+
+      QItemSelectionModel::select ( index,command );
+
+      if ( ! ( command & QItemSelectionModel::Select ) )
+      {
+        return;
+      }
+
+      if ( index.isValid() && !m_pTreeView->isExpanded ( index ) )
+      {
+        QModelIndexList indexes_to_select;
+
+        collect_all_children ( index,indexes_to_select );
+
+        for ( QModelIndexList::iterator ind_it = indexes_to_select.begin(); ind_it != indexes_to_select.end();++ind_it )
+        {
+          QItemSelectionModel::select ( *ind_it,QItemSelectionModel::Select );
+        }
+      }
+    }
+
+    virtual void select ( const QItemSelection &selection, QItemSelectionModel::SelectionFlags command )
+    {
+      QItemSelectionModel::select ( selection,command );
+    }
+  private:
+
+    void collect_all_children ( const QModelIndex &index,QModelIndexList &retlist )
+    {
+      QModelIndexList ind_stack;
+
+      ind_stack.push_back ( index );
+
+      while ( ind_stack.size() !=0 )
+      {
+        QModelIndex top_ind = ind_stack.front();
+
+        ind_stack.pop_front();
+
+        retlist.push_back ( top_ind );
+
+        uint child_ind = 0;
+
+        QModelIndex child = top_ind.child ( child_ind++, top_ind.column() );
+
+        while ( child.isValid() )
+        {
+          ind_stack.push_back ( child );
+
+          child = top_ind.child ( child_ind++, top_ind.column() );
+        }
+      }
+
+    }
+
+    QTreeView *m_pTreeView;
+};
+
 #endif

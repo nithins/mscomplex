@@ -93,7 +93,7 @@ class rectangle_complex
         return sub ( *this,s );
       }
 
-      size_def sub ( const point_def & p )
+      size_def sub ( const point_def & p ) const
       {
         return sub ( *this,p );
       }
@@ -113,7 +113,7 @@ class rectangle_complex
       point_def tr;
 
 
-      size_def size()
+      size_def size() const
       {
         return tr.sub(bl);
       }

@@ -43,17 +43,20 @@ set(dmsc_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/main.cpp
 
 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/rectangle_complex.h
 
-	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/quad_datamanager.h
-	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/quad_datamanager.cpp
-
-	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/quad_datamanager_ui.h
-	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/quad_datamanager_ui.cpp
-
-	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/quad_dataset.h
-	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/quad_dataset.cpp
+# 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/quad_datamanager.h
+# 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/quad_datamanager.cpp
+# 
+# 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/quad_datamanager_ui.h
+# 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/quad_datamanager_ui.cpp
+# 
+# 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/quad_dataset.h
+# 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/quad_dataset.cpp
 
 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/prefix_scan.h
 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/prefix_scan.cpp
+
+        ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/bitonic_sort.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/bitonic_sort.cpp
 
 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/grid_dataset.h
 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/grid_dataset.cpp
@@ -64,18 +67,20 @@ set(dmsc_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/main.cpp
 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/grid_datamanager.h
 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/grid_datamanager.cpp
 
-	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/grid_datamanager.h
+	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/grid_datamanager_ui.h
 	      ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/src/grid_datamanager_ui.cpp
 	      )
 
 file(GLOB ply_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/ply/*.c ${CMAKE_CURRENT_SOURCE_DIR}/ply/*.h)
 
-QT4_WRAP_CPP(dmsc_MOC_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/quad_datamanager_ui.h
-			   ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/quad_datamanager.h
+QT4_WRAP_CPP(dmsc_MOC_SRCS
+#          ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/quad_datamanager_ui.h
+# 			   ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/quad_datamanager.h
 			   ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/grid_datamanager_ui.h
 			   ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/include/grid_datamanager.h)
 
-file(GLOB dmsc_UIS ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/forms/quad_datamanager_frame.ui
+file(GLOB dmsc_UIS
+#       ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/forms/quad_datamanager_frame.ui
 		   ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/forms/grid_datamanager_frame.ui)
 
 QT4_ADD_RESOURCES(dmsc_RC_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/dmsc/resources/mscomplex.qrc)

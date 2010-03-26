@@ -477,25 +477,86 @@ void GridMSComplex::simplify_un_simplify(double simplification_treshold)
   un_simplify(canc_pairs_list);
 }
 
+
+#include <fstream>
+
+#define SAVE_TO_ASCII
+
+void write_disc(const GridMSComplex::critpt_disc_t *disc,
+                const std::string &prefix,
+                const GridMSComplex::cellid_t &c )
+{
+
+  std::stringstream ss;
+  ss<<prefix;
+  ((std::ostream&)ss)<<c;
+
+  std::ofstream os;
+
+#ifdef SAVE_TO_ASCII
+  os.open(ss.str().c_str(),std::ios::out|std::ios::ate|std::ios::app);
+#else
+  os.open(ss.str().c_str(),std::ios::out|std::ios::ate|std::ios::app|std::ios::binary);
+#endif
+
+  if(os.is_open() == false)
+    throw std::runtime_error("asc/des disc file not writeable");
+#ifdef SAVE_TO_ASCII
+  for(int i = 0 ; i < disc->size();++i)
+  {
+    os<<(*disc)[i];
+  }
+#else
+  os.write((const char*)(const void*)disc->data(),disc->size()*sizeof(GridMSComplex::cellid_t));
+#endif
+
+  os.close();
+}
+
+void GridMSComplex::write_discs(const std::string &fn_prefix)
+{
+  critpt_t * cp ;
+
+  for(uint i = 0 ; i < m_cps.size();++i)
+  {
+    cp = m_cps[i];
+    if(cp->asc_disc.size() != 0 )
+      write_disc(&cp->asc_disc,fn_prefix+"asc_",cp->cellid);
+
+    if(cp->des_disc.size() != 0 )
+      write_disc(&cp->des_disc,fn_prefix+"des_",cp->cellid);
+  }
+}
+
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/array.hpp>
 #include <boost/serialization/map.hpp>
 #include <boost/serialization/set.hpp>
 #include <boost/serialization/base_object.hpp>
+#include <boost/serialization/binary_object.hpp>
+
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/archive/text_iarchive.hpp>
+
+#include <grid_dataset.h>
 
 namespace boost
 {
   namespace serialization
   {
-
     template<class Archive>
     void serialize(Archive & ar, grid_types_t::rect_point_t & r, const unsigned int )
     {
       typedef boost::array<grid_types_t::rect_point_t::value_type,grid_types_t::rect_point_t::static_size> rect_point_base_t;
 
       ar & boost::serialization::base_object<rect_point_base_t>(r);
+    }
+
+    template<class Archive>
+    void serialize(Archive & ar, grid_types_t::rect_t & r, const unsigned int )
+    {
+      ar & r.bl;
+      ar & r.tr;
     }
 
     template<class Archive>
@@ -512,13 +573,6 @@ namespace boost
 
 
     template<class Archive>
-    void serialize(Archive & ar, grid_types_t::rect_t & r, const unsigned int )
-    {
-      ar & r.bl;
-      ar & r.tr;
-    }
-
-    template<class Archive>
     void serialize(Archive & ar, GridMSComplex & g, const unsigned int )
     {
       ar & g.m_rect;
@@ -528,8 +582,41 @@ namespace boost
       ar & g.m_cps;
     }
 
-  } // namespace serialization
+    template<class Archive>
+    void serialize(Archive & ar, GridDataset & ds, const unsigned int )
+    {
+       ar & ds.m_rect;
+       ar & ds.m_ext_rect;
+
+       GridDataset::rect_size_t ext_sz = ds.m_ext_rect.size();
+       uint num_data_items = (ext_sz[0]+1)*(ext_sz[1]+1);
+
+       if(Archive::is_loading::value)
+         ds.init();
+
+       ar & make_binary_object(ds.m_cell_flags.data(),num_data_items*sizeof(GridDataset::cell_flag_t));
+       ar & make_binary_object(ds.m_cell_own.data(),num_data_items*sizeof(GridDataset::cellid_t));
+       ar & make_binary_object(ds.m_cell_pairs.data(),num_data_items*sizeof(GridDataset::cellid_t));
+    }
+  }
 }
+
+// without the explicit instantiations below, the program will
+// fail to link for lack of instantiantiation of the above function
+// The impls are visible only in this file to save compilation time..
+
+template void boost::serialization::serialize<boost::archive::text_iarchive>(
+    boost::archive::text_iarchive & ar,
+    GridDataset & g,
+    const unsigned int file_version
+);
+
+template void boost::serialization::serialize<boost::archive::text_oarchive>(
+    boost::archive::text_oarchive & ar,
+    GridDataset & g,
+    const unsigned int file_version
+);
+
 
 // without the explicit instantiations below, the program will
 // fail to link for lack of instantiantiation of the above function
@@ -545,3 +632,5 @@ template void boost::serialization::serialize<boost::archive::text_oarchive>(
     GridMSComplex & g,
     const unsigned int file_version
 );
+
+

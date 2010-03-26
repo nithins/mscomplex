@@ -54,6 +54,7 @@ public:
   typedef GridMSComplex                               mscomplex_t;
   typedef mscomplex_t::critical_point                 critpt_t;
   typedef mscomplex_t::critical_point::connection_t   conn_t;
+  typedef MSComplex<grid_types_t::cellid_t>::critical_point::disc_t         critpt_disc_t;
   typedef conn_t::iterator                            conn_iter_t;
   typedef conn_t::const_iterator                      const_conn_iter_t;
   typedef std::vector<cell_fn_t>                      cp_fn_list_t;
@@ -78,8 +79,13 @@ public:
   GridMSComplex(rect_t r,rect_t e):m_rect(r),m_ext_rect(e){}
 
   GridMSComplex(){}
+
+  void write_discs(const std::string &fn_prefix);
 };
 
+
+#include <boost/serialization/array.hpp>
+#include <boost/serialization/base_object.hpp>
 
 namespace boost
 {

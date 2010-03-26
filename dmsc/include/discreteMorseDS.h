@@ -90,6 +90,7 @@ public:
   struct critical_point
   {
     typedef std::multiset<uint> connection_t;
+    typedef std::vector<id_t>   disc_t;
 
     id_t cellid;
 
@@ -108,8 +109,8 @@ public:
     }
 
 
-    std::set<id_t> asc_disc;
-    std::set<id_t> des_disc;
+    disc_t asc_disc;
+    disc_t des_disc;
 
     connection_t asc;
     connection_t des;

@@ -138,15 +138,19 @@ public:
 
   void workPiece ( GridDataPiece  * );
 
-  void workAllPieces_mt( );
-
   void workPiecesInRange_mt(uint ,uint );
 
   void workPiecesInRange_ocl(uint ,uint );
 
-  void workAllPieces_st( );
 
-  void clearInteriorGrad(uint start,uint end );
+
+  void postMergeCollectDiscs(GridDataPiece  *);
+
+  void postMergeWriteDiscs(GridDataPiece  * );
+
+
+
+  void workAllPieces_st( );
 
   void mergePiecesUp_mt( );
 
@@ -155,6 +159,10 @@ public:
   void mergePiecesDown_mt( );
 
   void mergePiecesDown_st( );
+
+  void postMergeCollectManifolds_st( );
+
+  void postMergeCollectManifolds_mt( );
 
   void renderDataPiece ( GridDataPiece  *dp ) const;
 

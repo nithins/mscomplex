@@ -410,9 +410,9 @@ template <typename id_t>
   {
     if ( *asc0_it == cp1_ind )  continue;
 
-    DEBUG_LOG_V ( "merging des_manifold of "<< cp1_ind<<" with " << *asc0_it );
+//    DEBUG_LOG_V ( "merging des_manifold of "<< cp1_ind<<" with " << *asc0_it );
 
-    msc->m_cps[ *asc0_it ]->des_disc.insert ( msc->m_cps[ cp1_ind ]->des_disc.begin(),msc->m_cps[ cp1_ind ]->des_disc.end() );
+//    msc->m_cps[ *asc0_it ]->des_disc.insert ( msc->m_cps[ cp1_ind ]->des_disc.begin(),msc->m_cps[ cp1_ind ]->des_disc.end() );
 
     DEBUG_LOG_V ( "Removing   "<<cp0_ind<<" from "<< ( *asc0_it ) );
 
@@ -437,9 +437,9 @@ template <typename id_t>
   {
     if ( ( *des1_it ) == cp0_ind )  continue;
 
-    DEBUG_LOG_V ( "merging asc_manifold of "<< cp0_ind<<" with " << *des1_it );
+//    DEBUG_LOG_V ( "merging asc_manifold of "<< cp0_ind<<" with " << *des1_it );
 
-    msc->m_cps[ *des1_it ]->asc_disc.insert ( msc->m_cps[ cp0_ind ]->asc_disc.begin(),msc->m_cps[ cp0_ind ]->asc_disc.end() );
+//    msc->m_cps[ *des1_it ]->asc_disc.insert ( msc->m_cps[ cp0_ind ]->asc_disc.begin(),msc->m_cps[ cp0_ind ]->asc_disc.end() );
 
     DEBUG_LOG_V ( "Removing   "<<cp1_ind<<" from "<< ( *des1_it ) );
 

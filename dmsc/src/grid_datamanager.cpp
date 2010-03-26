@@ -131,8 +131,6 @@ void GridDataManager::readFile ( )
           uint end   = dp_idx;
 
           workPiecesInRange_mt(start,end);
-
-          clearInteriorGrad(start,end);
         }
       }
     }
@@ -155,22 +153,7 @@ void GridDataManager::readFile ( )
     }
 
     workPiecesInRange_mt(start,end);
-    clearInteriorGrad(start,end);
-
   }
-}
-
-void GridDataManager::clearInteriorGrad(uint start,uint end )
-{
-  _LOG("Begin Clear Interior grad");
-
-  for(uint i = start ; i < end; ++i)
-  {
-    GridDataPiece *dp = m_pieces[i];
-    //dp->dataset->clear_graddata();
-    delete dp->dataset;
-  }
-  _LOG("End Clear Interior grad");
 }
 
 void read_msgraph_from_archive(GridDataPiece * dp)
@@ -187,6 +170,20 @@ void read_msgraph_from_archive(GridDataPiece * dp)
   ia >> (*dp->msgraph);
 }
 
+void read_dataset_from_archive(GridDataPiece * dp)
+{
+  std::string filename("dp_dataset_");
+  filename += dp->label();
+
+  std::ifstream ifs(filename.c_str());
+
+  boost::archive::text_iarchive ia(ifs);
+
+  dp->dataset = new GridDataset;
+
+  ia >> (*dp->dataset);
+}
+
 void write_msgraph_to_archive(GridDataPiece * dp)
 {
   std::string filename("dp_msgraph_");
@@ -200,6 +197,22 @@ void write_msgraph_to_archive(GridDataPiece * dp)
 
   delete dp->msgraph;
   dp->msgraph = NULL;
+
+}
+
+void write_dataset_to_archive(GridDataPiece * dp)
+{
+  std::string filename("dp_dataset_");
+  filename += dp->label();
+
+  std::ofstream ofs(filename.c_str());
+
+  boost::archive::text_oarchive oa(ofs);
+
+  oa << (*dp->dataset);
+
+  delete dp->dataset;
+  dp->dataset = NULL;
 
 }
 
@@ -219,6 +232,8 @@ void GridDataManager::workPiece ( GridDataPiece *dp )
   if(m_compute_out_of_core == true)
   {
     write_msgraph_to_archive(dp);
+
+//    write_dataset_to_archive(dp);
   }
 }
 
@@ -282,9 +297,13 @@ void mergePiecesDown
   {
     write_msgraph_to_archive(dp1);
     write_msgraph_to_archive(dp2);
+
+    // this is a hack .. you may want to handle this better
+    if(!is_src_archived)
+    {
+      write_msgraph_to_archive(dp);
+    }
   }
-
-
 }
 
 void GridDataManager::workPiecesInRange_ocl(uint start,uint end )
@@ -298,6 +317,67 @@ void GridDataManager::workPiecesInRange_ocl(uint start,uint end )
   }
   _LOG ( "End ocl work  for pieces from "<<start<<" to "<<end );
 }
+
+void GridDataManager::postMergeCollectManifolds_st( )
+{
+  _LOG ( "Begin post Merge work "  );
+  for ( uint i = 0 ; i < (m_pieces.size()+1)/2;i++ )
+  {
+    GridDataPiece * dp = m_pieces[i];
+
+    postMergeCollectDiscs(dp);
+
+    postMergeWriteDiscs(dp);
+  }
+  _LOG ( "End post Merge work ");
+
+
+}
+
+void GridDataManager::postMergeCollectManifolds_mt( )
+{
+
+  boost::thread ** threads = new boost::thread*[ num_parallel ];
+
+  for ( uint i = 0 ; i < (m_pieces.size()+1)/2; i+=num_parallel )
+  {
+    uint start = i;
+    uint end   = std::min((long unsigned int )i+num_parallel,(m_pieces.size()+1)/2);
+
+    _LOG ( "Begin mt post merge collection for pieces from "<<start<<" to "<<end );
+
+    uint threadno = 0;
+
+    for ( uint j = start ; j < end;j++ )
+    {
+      _LOG ( "Kicking off thread "<<threadno );
+
+      GridDataPiece * dp = m_pieces[j];
+      threads[threadno] = new boost::thread
+                          ( boost::bind ( &GridDataManager::postMergeCollectDiscs,this,dp ) );
+      threadno++;
+    }
+
+    threadno = 0;
+
+    for ( uint j = start ; j < end;j++ )
+    {
+      threads[threadno]->join();
+      _LOG ( "thread "<<threadno<<" joint" );
+
+      GridDataPiece * dp = m_pieces[j];
+
+      postMergeWriteDiscs(dp);
+      threadno++;
+    }
+
+    _LOG ( "End mt post merge step"<<start<<" to "<<end );
+
+  }
+
+  delete []threads;
+}
+
 
 void GridDataManager::workPiecesInRange_mt(uint start,uint end )
 {
@@ -334,21 +414,15 @@ void GridDataManager::workPiecesInRange_mt(uint start,uint end )
   _LOG ( "End mt work for pieces from "<<start<<" to "<<end );
 }
 
-void GridDataManager::workAllPieces_mt( )
-{
-  workPiecesInRange_mt(0,m_pieces.size());
-}
-
 void GridDataManager::workAllPieces_st( )
 {
-
   _LOG ( "Begin st work on pieces" );
-
-  if(m_use_ocl == true)
-    workPiecesInRange_ocl(0,m_pieces.size());
 
   for ( uint i = 0 ; i < m_pieces.size();i++ )
   {
+    if(m_use_ocl == true)
+      workPiecesInRange_ocl(i,i+1);
+
     GridDataPiece * dp = m_pieces[i];
 
     workPiece(dp);
@@ -371,7 +445,7 @@ void GridDataManager::mergePiecesUp_mt( )
 
   boost::thread ** threads = new boost::thread*[ num_parallel];
 
-  uint i_incr = num_parallel*2;
+  uint i_incr = std::min((size_t)num_parallel*2,(m_pieces.size()+1)/2);
 
   for ( uint i = 0; i<m_pieces.size()-1; i+=i_incr)
   {
@@ -517,6 +591,33 @@ void GridDataManager::mergePiecesDown_mt()
   return;
 }
 
+void GridDataManager::postMergeCollectDiscs(GridDataPiece  *dp)
+{
+  if(m_compute_out_of_core)
+  {
+    read_msgraph_from_archive(dp);
+    read_dataset_from_archive(dp);
+  }
+
+  dp->dataset->post_merge_work_ocl(dp->msgraph);
+
+  if(m_compute_out_of_core)
+  {
+    delete dp->dataset;
+  }
+}
+
+void GridDataManager::postMergeWriteDiscs(GridDataPiece  * dp)
+{
+  dp->msgraph->write_discs("cp_disc_");
+
+  if(m_compute_out_of_core)
+  {
+    delete dp->msgraph;
+  }
+}
+
+
 GridDataManager::GridDataManager
     ( std::string filename,
       u_int        size_x,
@@ -566,6 +667,8 @@ GridDataManager::GridDataManager
       m_pieces[m_pieces.size()-1]->msgraph->simplify_un_simplify(m_simp_tresh);
 
       mergePiecesDown_mt();
+
+      // postMergeCollectManifolds_mt();
     }
     else
     {
@@ -576,6 +679,7 @@ GridDataManager::GridDataManager
 
       mergePiecesDown_st();
 
+      // postMergeCollectManifolds_st();
     }
 
   }
@@ -591,18 +695,23 @@ GridDataManager::GridDataManager
 
   if(m_compute_out_of_core == true)
   {
-    for(uint i = 0 ; i <m_pieces.size()-1;++i)
+    for(uint i = 0 ; i <m_pieces.size();++i)
     {
       GridDataPiece *dp = m_pieces[i];
 
       read_msgraph_from_archive(dp);
     }
+
+    for(uint i = 0 ; i <(m_pieces.size()+1)/2;++i)
+    {
+      GridDataPiece *dp = m_pieces[i];
+
+      read_dataset_from_archive(dp);
+    }
   }
 
   for(uint i = 0 ; i <m_pieces.size();++i)
   {
-
-
     GridDataPiece *dp = m_pieces[i];
 
     dp->create_cp_rens();
@@ -629,7 +738,6 @@ void GridDataManager ::logAllConnections(const std::string &prefix)
 
 void GridDataManager::logAllCancelPairs(const std::string &prefix)
 {
-
 }
 
 GridDataManager::~GridDataManager()

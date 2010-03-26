@@ -26,9 +26,6 @@
 #include <grid_datamanager.h>
 #include <grid_datamanager_ui.h>
 
-// only for the def of recursive treemodel
-#include <quad_datamanager_ui.h>
-
 #include <ui_grid_datamanager_frame.h>
 
 using namespace std;
