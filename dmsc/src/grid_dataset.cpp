@@ -445,7 +445,7 @@ void GridDataset::assignGradients_ocl(cl_command_queue &commands)
 
   rect_size_t ext_sz = m_ext_rect.size();
 
-  size_t vert_img_rgn[3]  = {(ext_sz[1]>>1)+1,(ext_sz[0]>>1)+1,1};
+  size_t vert_img_rgn[3]  = {(ext_sz[0]>>1)+1,(ext_sz[1]>>1)+1,1};
 
   size_t local[] = {max_threads_2D_x,max_threads_2D_y};
 
@@ -462,7 +462,7 @@ void GridDataset::assignGradients_ocl(cl_command_queue &commands)
   cl_mem vfn_img_cl = clCreateImage2D
                       (s_context,CL_MEM_READ_ONLY| CL_MEM_COPY_HOST_PTR,
                        &vert_fn_imgfmt,vert_img_rgn[0],vert_img_rgn[1],0,
-                       m_vertex_fns.data(),&error_code);
+                       (*m_vert_fns_ref).data(),&error_code);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create cell fn texture");
 
@@ -1464,7 +1464,8 @@ GridDataset::GridDataset (const rect_t &r,const rect_t &e) :
     m_cell_pair_img(NULL),
     m_cell_flag_img(NULL),
     m_critical_cells_buf(NULL),
-    m_cell_own_img(NULL)
+    m_cell_own_img(NULL),
+    m_vert_fns_ref(NULL)
 {
 
   // TODO: assert that the given rect is of even size..
@@ -1477,15 +1478,23 @@ GridDataset::GridDataset () :
     m_cell_pair_img(NULL),
     m_cell_flag_img(NULL),
     m_critical_cells_buf(NULL),
-    m_cell_own_img(NULL)
+    m_cell_own_img(NULL),
+    m_vert_fns_ref(NULL)
 {
 }
 
-void GridDataset::init()
+GridDataset::~GridDataset ()
+{
+  clear();
+}
+
+void GridDataset::init(cell_fn_t * pData)
 {
   rect_size_t   s = m_ext_rect.size();
 
-  m_vertex_fns.resize (boost::extents[1+s[0]/2][1+s[1]/2]);
+  if(pData != NULL)
+    m_vert_fns_ref = new varray_ref_t(pData,boost::extents[1+s[0]/2][1+s[1]/2],boost::fortran_storage_order());
+
   m_cell_flags.resize ( (boost::extents[1+s[0]][1+s[1]]));
   m_cell_pairs.resize ( (boost::extents[1+s[0]][1+s[1]]));
   m_cell_own.resize ( (boost::extents[1+s[0]][1+s[1]]));
@@ -1496,7 +1505,7 @@ void GridDataset::init()
 
   rect_point_t bl = m_ext_rect.bottom_left();
 
-  m_vertex_fns.reindex (bl/2);
+  (*m_vert_fns_ref).reindex (bl/2);
 
   m_cell_flags.reindex (bl);
 
@@ -1504,9 +1513,11 @@ void GridDataset::init()
   m_cell_own.reindex (bl);
 }
 
-void GridDataset::clear_graddata()
+void  clear()
 {
-  m_vertex_fns.resize (boost::extents[0][0]);
+  if(m_vert_fns_ref != NULL)
+    delete m_vert_fns_ref;
+
   m_cell_flags.resize (boost::extents[0][0]);
   m_cell_pairs.resize (boost::extents[0][0]);
   m_cell_own.resize (boost::extents[0][0]);
@@ -1549,7 +1560,7 @@ GridDataset::cell_fn_t GridDataset::get_cell_fn (cellid_t c) const
   uint pts_ct = getCellPoints (c,pts);
 
   for (int j = 0 ; j <pts_ct ;++j)
-    fn += m_vertex_fns (pts[j]/2);
+    fn += (*m_vert_fns_ref) (pts[j]/2);
 
   fn /= pts_ct;
 
@@ -1565,7 +1576,7 @@ void GridDataset::set_cell_fn (cellid_t c,cell_fn_t f)
 
   c[1] /=2;
 
-  m_vertex_fns (c) = f;
+  (*m_vert_fns_ref) (c) = f;
 }
 
 uint GridDataset::getCellPoints (cellid_t c,cellid_t  *p) const

@@ -179,6 +179,23 @@ void write_cell_flag(short2 c,unsigned int flag ,__write_only image2d_t cell_fg_
   write_imageui(cell_fg_img, imgcrd,val);
 }
 
+void write_cell_pair(short2 c,short2 p,short2 ext_bl ,__write_only image2d_t cell_pr_img)
+{
+  int2 imgcrd;
+
+  imgcrd.x = c.y;
+  imgcrd.y = c.x;
+
+
+  int4 pr;
+  pr.x = p.x + ext_bl.x;
+  pr.y = p.y + ext_bl.y;
+  pr.z = 0;
+  pr.w = 0;
+
+  write_imagei(cell_pr_img,imgcrd,pr);
+}
+
 short2  get_cell_pair(short2 c,short2 ext_bl, __read_only image2d_t cell_pr_img)
 {
   int2 imgcrd;

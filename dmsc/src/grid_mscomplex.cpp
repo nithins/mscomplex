@@ -592,7 +592,7 @@ namespace boost
        uint num_data_items = (ext_sz[0]+1)*(ext_sz[1]+1);
 
        if(Archive::is_loading::value)
-         ds.init();
+         ds.init(NULL);
 
        ar & make_binary_object(ds.m_cell_flags.data(),num_data_items*sizeof(GridDataset::cell_flag_t));
        ar & make_binary_object(ds.m_cell_own.data(),num_data_items*sizeof(GridDataset::cellid_t));

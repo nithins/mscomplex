@@ -12,8 +12,8 @@ cell_fn_t get_cell_fn(short2 c,__read_only image2d_t vert_fn_img)
 {  
   int2 imgcrd;
   
-  imgcrd.y = c.x/2;
-  imgcrd.x = c.y/2;
+  imgcrd.x = c.x/2;
+  imgcrd.y = c.y/2;
   
   float4 col = read_imagef(vert_fn_img, vert_fn_sampler, imgcrd);
   
@@ -170,38 +170,15 @@ __kernel void assign_gradient
     }
   }
 
-
-  int2 ccoord;
-  ccoord.y = c.x;
-  ccoord.x = c.y;
-
   if(is_paired == 1)
   {
-    int4 pr;
-    pr.x = p.x + ext_bl.x;
-    pr.y = p.y + ext_bl.y;
-    pr.z = 0;
-    pr.w = 0;
+    write_cell_pair(c,p,ext_bl,cell_pr_img);
 
-    write_imagei(cell_pr_img,ccoord,pr);
-
-    uint4 fg;
-    fg.x = 1;
-    fg.y = 0;
-    fg.z = 0;
-    fg.w = 0;
-
-    write_imageui(cell_fg_img,ccoord,fg);
+    write_cell_flag(c,1,cell_fg_img);
   }
   else
   {
-    uint4 fg;
-    fg.x = 2;
-    fg.y = 0;
-    fg.z = 0;
-    fg.w = 0;
-
-    write_imageui(cell_fg_img,ccoord,fg);
+    write_cell_flag(c,2,cell_fg_img);
   }   
 }
 __kernel void complete_pairings(
@@ -239,12 +216,12 @@ const short2 ext_tr
    imgcrd.y = f[i].x;
    imgcrd.x = f[i].y;
 
-   int4  fp   = read_imagei(cell_pr_img, cell_pr_sampler, imgcrd);
-   uint4 fflg = read_imagei(cell_fg_img, cell_fg_sampler, imgcrd);
+   uint   fflg = get_cell_flag(f[i],cell_fg_img);
+   short2 fp   = get_cell_pair(f[i],ext_bl,cell_pr_img);
 
-   if(fp.x == c.x + ext_bl.x &&
-      fp.y == c.y + ext_bl.y &&
-      is_cell_paired(fflg.x) == 1)
+   if(fp.x == c.x&&
+      fp.y == c.y&&
+      is_cell_paired(fflg) == 1)
     {
      p = f[i];
      is_paired = 1;
@@ -254,26 +231,9 @@ const short2 ext_tr
 
   if(is_paired == 1)
   {
-   int2 imgcrd;
-   imgcrd.y = c.x;
-   imgcrd.x = c.y;
-    
-   int4 pr;
-   pr.x = p.x + ext_bl.x;
-   pr.y = p.y + ext_bl.y;
-   pr.z = 0;
-   pr.w = 0;
+    write_cell_pair(c,p,ext_bl,cell_pr_img_out);
 
-   write_imagei(cell_pr_img_out,imgcrd,pr);
-
-   uint4 fg;
-   fg.x = 1;
-   fg.y = 0;
-   fg.z = 0;
-   fg.w = 0;
-
-   write_imageui(cell_fg_img_out,imgcrd,fg);
-
+    write_cell_flag(c,1,cell_fg_img_out);
   }
 }
 

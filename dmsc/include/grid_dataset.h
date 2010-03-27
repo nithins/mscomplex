@@ -53,6 +53,8 @@ public:
   typedef boost::multi_array<cellid_t,2>    cellpair_array_t;
   typedef boost::multi_array<cell_flag_t,2> cellflag_array_t;
 
+  typedef boost::multi_array_ref<cell_fn_t,2>   varray_ref_t;
+
 public:
 
   class pt_comp_t
@@ -71,7 +73,7 @@ public:
   rect_t             m_rect;
   rect_t             m_ext_rect;
 
-  varray_t           m_vertex_fns; // defined on the vertices of bounding rect
+  varray_ref_t      *m_vert_fns_ref;
 
   cellpair_array_t   m_cell_pairs;
   cellpair_array_t   m_cell_own;
@@ -94,22 +96,19 @@ public:
 
   GridDataset ( const rect_t &r,const rect_t &e );
 
-  GridDataset ( );
+  GridDataset ();
 
-  ~GridDataset ( )
-  {
-    clear_graddata();
-  }
+  ~GridDataset ();
 
-  void  init();
+  void  init(cell_fn_t * pData);
 
   void  set_cell_fn ( cellid_t c,cell_fn_t f );
-
-  void  clear_graddata();
 
   void  create_pair_flag_imgs_ocl();
 
   void  clear_buffers_ocl();
+
+  void  clear();
 
   // actual algorithm work
 public:
@@ -153,8 +152,8 @@ public:
 
   inline bool   ptLt ( cellid_t c1,cellid_t c2) const
   {
-    double f1 = m_vertex_fns[c1[0]>>1][c1[1]>>1];
-    double f2 = m_vertex_fns[c2[0]>>1][c2[1]>>1];
+    double f1 = (*m_vert_fns_ref)[c1[0]>>1][c1[1]>>1];
+    double f2 = (*m_vert_fns_ref)[c2[0]>>1][c2[1]>>1];
 
     if (f1 != f2)
       return f1 < f2;

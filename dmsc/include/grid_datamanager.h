@@ -86,6 +86,13 @@ struct GridDataPiece
   std::string label();
 };
 
+const uint num_parallel = 8;
+
+namespace boost
+{
+  class thread;
+}
+
 class GridDataManager:
     virtual public QFrame,
     virtual public IModel,
@@ -116,6 +123,8 @@ public:
 
   IModelController            *m_controller;
 
+  boost::thread *              m_threads[num_parallel];
+
 public:
 
   GridDataManager
@@ -138,27 +147,20 @@ public:
 
   void workPiece ( GridDataPiece  * );
 
-  void workPiecesInRange_mt(uint ,uint );
+  void workPiecesInRange(uint ,uint );
 
-  void workPiecesInRange_ocl(uint ,uint );
-
-
+  void waitForThreadsInRange(uint,uint);
 
   void postMergeCollectDiscs(GridDataPiece  *);
 
   void postMergeWriteDiscs(GridDataPiece  * );
 
 
+  void mergePiecesUp( );
 
-  void workAllPieces_st( );
+  void mergePiecesDown( );
 
-  void mergePiecesUp_mt( );
-
-  void mergePiecesUp_st( );
-
-  void mergePiecesDown_mt( );
-
-  void mergePiecesDown_st( );
+  void mergePiecesDown_finalstep( );
 
   void postMergeCollectManifolds_st( );
 
