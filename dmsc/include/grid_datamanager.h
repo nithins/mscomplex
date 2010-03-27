@@ -79,9 +79,9 @@ struct GridDataPiece
   void create_grad_rens();
   void create_surf_ren();
 
-  GridDataPiece (std::string l);
+  GridDataPiece (uint l);
 
-  std::string m_label;
+  uint m_pieceno;
 
   std::string label();
 };
@@ -143,28 +143,38 @@ public:
 
   void createDataPieces();
 
-  void readFile ();
 
-  void workPiece ( GridDataPiece  * );
+  void readDataAndInit(std::ifstream &data_stream,GridDataset::cell_fn_t *,uint start_offset);
 
-  void workPiecesInRange(uint ,uint );
+  uint getMaxDataBufItems();
+
 
   void waitForThreadsInRange(uint,uint);
 
-  void postMergeCollectDiscs(GridDataPiece  *);
 
-  void postMergeWriteDiscs(GridDataPiece  * );
 
+  void computeMsGraph ( GridDataPiece  * );
+
+  void computeMsGraphInRange(uint ,uint );
+
+
+  void finalMergeDownPiecesInRange(uint start,uint end);
+
+  void collectManifold( GridDataPiece  * );
+
+  void collectManifoldsInRange(uint start,uint end);
+
+  void writeManifoldsInRange(uint start,uint end);
+
+
+  void computeSubdomainMsgraphs ();
 
   void mergePiecesUp( );
 
   void mergePiecesDown( );
 
-  void mergePiecesDown_finalstep( );
+  void collectSubdomainManifolds( );
 
-  void postMergeCollectManifolds_st( );
-
-  void postMergeCollectManifolds_mt( );
 
   void renderDataPiece ( GridDataPiece  *dp ) const;
 

@@ -265,14 +265,14 @@ void  GridDataset::create_pair_flag_imgs_ocl()
   m_cell_pair_img = clCreateImage2D
                     (s_context,CL_MEM_READ_WRITE|CL_MEM_COPY_HOST_PTR,
                      &cell_pr_imgfmt,cell_img_rgn[0],cell_img_rgn[1],0,
-                     m_cell_pairs.data(),&error_code);
+                     (*m_cell_pairs).data(),&error_code);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create cell pair image");
 
   m_cell_flag_img = clCreateImage2D
                     (s_context,CL_MEM_READ_WRITE|CL_MEM_COPY_HOST_PTR,
                      &cell_fg_imgfmt,cell_img_rgn[0],cell_img_rgn[1],0,
-                     m_cell_flags.data(),&error_code);
+                     (*m_cell_flags).data(),&error_code);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to create cell flag texture");
 
@@ -290,7 +290,7 @@ void  GridDataset::read_flag_img_ocl(cl_command_queue &commands)
 
   error_code = clEnqueueReadImage( commands, m_cell_flag_img, CL_TRUE,
                                    cell_img_ogn,cell_img_rgn,0,0,
-                                   m_cell_flags.data(),0,NULL,NULL);
+                                   (*m_cell_flags).data(),0,NULL,NULL);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to read back cell flag image");
 }
@@ -307,7 +307,7 @@ void  GridDataset::read_own_img_ocl(cl_command_queue &commands)
 
   error_code = clEnqueueReadImage( commands, m_cell_own_img, CL_TRUE,
                                    cell_img_ogn,cell_img_rgn,0,0,
-                                   m_cell_own.data(),0,NULL,NULL);
+                                   (*m_cell_own).data(),0,NULL,NULL);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to read back cell flag image");
 }
@@ -324,7 +324,7 @@ void  GridDataset::read_pair_img_ocl(cl_command_queue &commands)
 
   error_code = clEnqueueReadImage( commands, m_cell_pair_img, CL_TRUE,
                                    cell_img_ogn,cell_img_rgn,0,0,
-                                   m_cell_pairs.data(),0,NULL,NULL);
+                                   (*m_cell_pairs).data(),0,NULL,NULL);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to read back cell pair image");
 
@@ -385,7 +385,7 @@ void GridDataset::work_grad_collate_ocl()
   _CHECKCL_ERR_CODE(error_code,"Failed to release commands queue");
 }
 
-void  GridDataset::work_ocl()
+void  GridDataset::work_ocl(bool collect_cps )
 {
   int error_code;                       // error code returned from api calls
 
@@ -415,9 +415,12 @@ void  GridDataset::work_ocl()
 
   uint it_ct =   assignCellOwnerExtrema_ocl(commands);
 
-  _LOG_TIMER(timer,"Watershed Done in "<<it_ct<<" iterations");
+  if(collect_cps)
+  {
+    _LOG_TIMER(timer,"Watershed Done in "<<it_ct<<" iterations");
 
-  collect_saddle_conn_ocl(commands);
+    collect_saddle_conn_ocl(commands);
+  }
 
   _LOG_TIMER(timer,"Saddle incidence collection Done");
 
@@ -428,12 +431,6 @@ void  GridDataset::work_ocl()
   error_code = clReleaseCommandQueue(commands);
 
   _CHECKCL_ERR_CODE(error_code,"Failed to release commands queue");
-}
-
-void  GridDataset::post_merge_work_ocl(mscomplex_t *msgraph)
-{
-  postMergeUpdateOwnerExtrema_ocl(msgraph);
-
 }
 
 
@@ -1079,14 +1076,12 @@ inline uint   GridDataset::getCellIncCells( cellid_t c,cellid_t * inc) const
   return 4;
 }
 
-int GridDataset::postMergeUpdateOwnerExtrema_ocl(mscomplex_t *msgraph)
+int GridDataset::postMergeFillDiscs(mscomplex_t *msgraph)
 {
 
   std::map<cellid_t,critpt_disc_t *> surv_crit_asc_disc_map;
   std::map<cellid_t,critpt_disc_t *> surv_crit_des_disc_map;
   std::vector<uint> surv_saddle_idxs;
-
-  _LOG("updating owner extrema");
 
   // update local copy of owner extrema with the cancllation info
   for(uint i = 0 ; i < msgraph->m_cps.size();++i)
@@ -1116,10 +1111,10 @@ int GridDataset::postMergeUpdateOwnerExtrema_ocl(mscomplex_t *msgraph)
           throw std::logic_error("My pair does not know Im paired with him");
 
         if(m_rect.contains(cp->cellid))
-          m_cell_own(cp->cellid) = extrema_cp->cellid;
+          (*m_cell_own)(cp->cellid) = extrema_cp->cellid;
 
         if(m_rect.contains(pair_cp->cellid))
-          m_cell_own(pair_cp->cellid) = extrema_cp->cellid;
+          (*m_cell_own)(pair_cp->cellid) = extrema_cp->cellid;
       }
       else if(cp_dim == 2)
       {
@@ -1179,8 +1174,6 @@ int GridDataset::postMergeUpdateOwnerExtrema_ocl(mscomplex_t *msgraph)
     }
   }
 
-  _LOG("adding zero cells to min");
-
   // all 0 d cells are owned by some minima
   for (cell_coord_t y = m_rect.bottom(); y <= m_rect.top();y += 2)
   {
@@ -1188,11 +1181,11 @@ int GridDataset::postMergeUpdateOwnerExtrema_ocl(mscomplex_t *msgraph)
     {
       cellid_t c (x,y);
 
-      cellid_t o = m_cell_own(c);
+      cellid_t o = (*m_cell_own)(c);
 
       if(m_rect.contains(o))
       {
-        o = m_cell_own(o);
+        o = (*m_cell_own)(o);
       }
 
       if(o[0] != -1 && o[1] != -1)
@@ -1202,8 +1195,6 @@ int GridDataset::postMergeUpdateOwnerExtrema_ocl(mscomplex_t *msgraph)
     }
   }
 
-  _LOG("adding 2 cells to max");
-
   // all 2 d cells are owned by some maxima
   for (cell_coord_t y = m_rect.bottom()+1; y < m_rect.top();y += 2)
   {
@@ -1211,11 +1202,11 @@ int GridDataset::postMergeUpdateOwnerExtrema_ocl(mscomplex_t *msgraph)
     {
       cellid_t c (x,y);
 
-      cellid_t o = m_cell_own(c);
+      cellid_t o = (*m_cell_own)(c);
 
       if(m_rect.contains(o))
       {
-        o = m_cell_own(o);
+        o = (*m_cell_own)(o);
       }
 
       if(o[0] != -1 && o[1] != -1)
@@ -1478,9 +1469,12 @@ GridDataset::GridDataset () :
     m_cell_pair_img(NULL),
     m_cell_flag_img(NULL),
     m_critical_cells_buf(NULL),
-    m_cell_own_img(NULL),
-    m_vert_fns_ref(NULL)
+    m_cell_own_img(NULL)
 {
+  m_vert_fns_ref = NULL;
+  m_cell_flags   = NULL;
+  m_cell_pairs   = NULL;
+  m_cell_own     = NULL;
 }
 
 GridDataset::~GridDataset ()
@@ -1495,41 +1489,55 @@ void GridDataset::init(cell_fn_t * pData)
   if(pData != NULL)
     m_vert_fns_ref = new varray_ref_t(pData,boost::extents[1+s[0]/2][1+s[1]/2],boost::fortran_storage_order());
 
-  m_cell_flags.resize ( (boost::extents[1+s[0]][1+s[1]]));
-  m_cell_pairs.resize ( (boost::extents[1+s[0]][1+s[1]]));
-  m_cell_own.resize ( (boost::extents[1+s[0]][1+s[1]]));
+  m_cell_flags = new cellflag_array_t( (boost::extents[1+s[0]][1+s[1]]));
+  m_cell_pairs = new cellpair_array_t( (boost::extents[1+s[0]][1+s[1]]));
+  m_cell_own   = new cellpair_array_t( (boost::extents[1+s[0]][1+s[1]]));
 
   for (int y = 0 ; y<=s[1];++y)
     for (int x = 0 ; x<=s[0];++x)
-      m_cell_flags[x][y] = CELLFLAG_UNKNOWN;
+      (*m_cell_flags)[x][y] = CELLFLAG_UNKNOWN;
 
   rect_point_t bl = m_ext_rect.bottom_left();
 
-  (*m_vert_fns_ref).reindex (bl/2);
+  if(pData != NULL)
+    (*m_vert_fns_ref).reindex (bl/2);
 
-  m_cell_flags.reindex (bl);
-
-  m_cell_pairs.reindex (bl);
-  m_cell_own.reindex (bl);
+  (*m_cell_flags).reindex (bl);
+  (*m_cell_pairs).reindex (bl);
+  (*m_cell_own).reindex (bl);
 }
 
-void  clear()
+void  GridDataset::clear()
 {
   if(m_vert_fns_ref != NULL)
     delete m_vert_fns_ref;
 
-  m_cell_flags.resize (boost::extents[0][0]);
-  m_cell_pairs.resize (boost::extents[0][0]);
-  m_cell_own.resize (boost::extents[0][0]);
+  if(m_cell_flags != NULL)
+    delete m_cell_flags;
+
+  if(m_cell_pairs != NULL)
+    delete m_cell_pairs;
+
+  if(m_cell_own != NULL)
+    delete m_cell_own;
+
   m_critical_cells.clear();
+
+  m_saddle_incidence_idx.clear();
+  m_saddle_incidence_idx_offset.clear();
+
+  m_vert_fns_ref = NULL;
+  m_cell_flags   = NULL;
+  m_cell_pairs   = NULL;
+  m_cell_own     = NULL;
 }
 
 GridDataset::cellid_t   GridDataset::getCellPairId (cellid_t c) const
 {
-  if (m_cell_flags (c) &CELLFLAG_PAIRED == 0)
+  if ((*m_cell_flags) (c) &CELLFLAG_PAIRED == 0)
     throw std::logic_error ("invalid pair requested");
 
-  return m_cell_pairs (c);
+  return (*m_cell_pairs) (c);
 }
 
 bool GridDataset::compareCells( cellid_t c1,cellid_t  c2 ) const
@@ -1684,31 +1692,31 @@ bool GridDataset::isPairOrientationCorrect (cellid_t c, cellid_t p) const
 
 bool GridDataset::isCellMarked (cellid_t c) const
 {
-  return ! (m_cell_flags (c) == CELLFLAG_UNKNOWN);
+  return ! ((*m_cell_flags) (c) == CELLFLAG_UNKNOWN);
 }
 
 bool GridDataset::isCellCritical (cellid_t c) const
 {
-  return (m_cell_flags (c) & CELLFLAG_CRITCAL);
+  return ((*m_cell_flags) (c) & CELLFLAG_CRITCAL);
 }
 
 bool GridDataset::isCellPaired (cellid_t c) const
 {
-  return (m_cell_flags (c) & CELLFLAG_PAIRED);
+  return ((*m_cell_flags) (c) & CELLFLAG_PAIRED);
 }
 
 void GridDataset::pairCells (cellid_t c,cellid_t p)
 {
-  m_cell_pairs (c) = p;
-  m_cell_pairs (p) = c;
+  (*m_cell_pairs) (c) = p;
+  (*m_cell_pairs) (p) = c;
 
-  m_cell_flags (c) = m_cell_flags (c) |CELLFLAG_PAIRED;
-  m_cell_flags (p) = m_cell_flags (p) |CELLFLAG_PAIRED;
+  (*m_cell_flags) (c) = (*m_cell_flags) (c) |CELLFLAG_PAIRED;
+  (*m_cell_flags) (p) = (*m_cell_flags) (p) |CELLFLAG_PAIRED;
 }
 
 void GridDataset::markCellCritical (cellid_t c)
 {
-  m_cell_flags (c) = m_cell_flags (c) |CELLFLAG_CRITCAL;
+  (*m_cell_flags) (c) = (*m_cell_flags) (c) |CELLFLAG_CRITCAL;
 }
 
 bool GridDataset::isTrueBoundryCell (cellid_t c) const
@@ -1913,7 +1921,7 @@ void GridDataset::log_flags()
     {
       cellid_t c(x,y);
 
-      int val = m_cell_flags(c);
+      int val = (*m_cell_flags)(c);
 
       std::cout<<val<<" ";
     }
@@ -1928,7 +1936,7 @@ void GridDataset::log_pairs()
     for (cell_coord_t x = m_ext_rect.left(); x <= m_ext_rect.right();x += 1)
     {
       cellid_t c(x,y);
-      std::cout<<m_cell_pairs(c)<<" ";
+      std::cout<<(*m_cell_pairs)(c)<<" ";
     }
     std::cout<<std::endl;
   }

@@ -75,9 +75,9 @@ public:
 
   varray_ref_t      *m_vert_fns_ref;
 
-  cellpair_array_t   m_cell_pairs;
-  cellpair_array_t   m_cell_own;
-  cellflag_array_t   m_cell_flags;
+  cellpair_array_t  *m_cell_pairs;
+  cellpair_array_t  *m_cell_own;
+  cellflag_array_t  *m_cell_flags;
   cellid_list_t      m_critical_cells;
 
   critpt_idx_list_t  m_saddle_incidence_idx_offset;
@@ -117,9 +117,7 @@ public:
 
   void  computeConnectivity(mscomplex_t *msgraph);
 
-  void  work_ocl();
-
-  void  post_merge_work_ocl(mscomplex_t *msgraph);
+  void  work_ocl(bool collect_cps = true);
 
   void  work_grad_collate_ocl();
 
@@ -139,7 +137,7 @@ public:
 
   void  collect_saddle_conn_ocl(cl_command_queue &commands);
 
-  int   postMergeUpdateOwnerExtrema_ocl(mscomplex_t *msgraph);
+  int   postMergeFillDiscs(mscomplex_t *msgraph);
 
   // sub tasks of the above routines
 public:

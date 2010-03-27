@@ -520,6 +520,10 @@ void GridMSComplex::write_discs(const std::string &fn_prefix)
   for(uint i = 0 ; i < m_cps.size();++i)
   {
     cp = m_cps[i];
+
+    if(cp->isBoundryCancelable == true)
+      continue;
+
     if(cp->asc_disc.size() != 0 )
       write_disc(&cp->asc_disc,fn_prefix+"asc_",cp->cellid);
 
@@ -538,7 +542,7 @@ void GridMSComplex::write_discs(const std::string &fn_prefix)
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/archive/text_iarchive.hpp>
 
-#include <grid_dataset.h>
+//#include <grid_dataset.h>
 
 namespace boost
 {
@@ -582,40 +586,40 @@ namespace boost
       ar & g.m_cps;
     }
 
-    template<class Archive>
-    void serialize(Archive & ar, GridDataset & ds, const unsigned int )
-    {
-       ar & ds.m_rect;
-       ar & ds.m_ext_rect;
-
-       GridDataset::rect_size_t ext_sz = ds.m_ext_rect.size();
-       uint num_data_items = (ext_sz[0]+1)*(ext_sz[1]+1);
-
-       if(Archive::is_loading::value)
-         ds.init(NULL);
-
-       ar & make_binary_object(ds.m_cell_flags.data(),num_data_items*sizeof(GridDataset::cell_flag_t));
-       ar & make_binary_object(ds.m_cell_own.data(),num_data_items*sizeof(GridDataset::cellid_t));
-       ar & make_binary_object(ds.m_cell_pairs.data(),num_data_items*sizeof(GridDataset::cellid_t));
-    }
+//    template<class Archive>
+//    void serialize(Archive & ar, GridDataset & ds, const unsigned int )
+//    {
+//       ar & ds.m_rect;
+//       ar & ds.m_ext_rect;
+//
+//       GridDataset::rect_size_t ext_sz = ds.m_ext_rect.size();
+//       uint num_data_items = (ext_sz[0]+1)*(ext_sz[1]+1);
+//
+//       if(Archive::is_loading::value)
+//         ds.init(NULL);
+//
+//       ar & make_binary_object(ds.(*m_cell_flags).data(),num_data_items*sizeof(GridDataset::cell_flag_t));
+//       ar & make_binary_object(ds.m_cell_own.data(),num_data_items*sizeof(GridDataset::cellid_t));
+//       ar & make_binary_object(ds.m_cell_pairs.data(),num_data_items*sizeof(GridDataset::cellid_t));
+//    }
   }
 }
 
-// without the explicit instantiations below, the program will
-// fail to link for lack of instantiantiation of the above function
-// The impls are visible only in this file to save compilation time..
-
-template void boost::serialization::serialize<boost::archive::text_iarchive>(
-    boost::archive::text_iarchive & ar,
-    GridDataset & g,
-    const unsigned int file_version
-);
-
-template void boost::serialization::serialize<boost::archive::text_oarchive>(
-    boost::archive::text_oarchive & ar,
-    GridDataset & g,
-    const unsigned int file_version
-);
+//// without the explicit instantiations below, the program will
+//// fail to link for lack of instantiantiation of the above function
+//// The impls are visible only in this file to save compilation time..
+//
+//template void boost::serialization::serialize<boost::archive::text_iarchive>(
+//    boost::archive::text_iarchive & ar,
+//    GridDataset & g,
+//    const unsigned int file_version
+//);
+//
+//template void boost::serialization::serialize<boost::archive::text_oarchive>(
+//    boost::archive::text_oarchive & ar,
+//    GridDataset & g,
+//    const unsigned int file_version
+//);
 
 
 // without the explicit instantiations below, the program will

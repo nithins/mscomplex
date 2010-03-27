@@ -108,6 +108,15 @@ public:
       pair_idx              = (u_int) -1;
     }
 
+    ~critical_point()
+    {
+      asc.clear();
+      des.clear();
+
+      asc_disc.clear();
+      des_disc.clear();
+    }
+
 
     disc_t asc_disc;
     disc_t des_disc;
