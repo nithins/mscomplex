@@ -24,8 +24,8 @@
 #include <boost/thread.hpp>
 #include <boost/bind.hpp>
 #include <boost/regex.hpp>
-#include <boost/archive/text_oarchive.hpp>
-#include <boost/archive/text_iarchive.hpp>
+#include <boost/archive/binary_iarchive.hpp>
+#include <boost/archive/binary_oarchive.hpp>
 
 #include <modelcontroller.h>
 
@@ -94,7 +94,7 @@ void read_msgraph_from_archive(GridDataPiece * dp)
 
   std::ifstream ifs(filename.c_str());
 
-  boost::archive::text_iarchive ia(ifs);
+  boost::archive::binary_iarchive ia(ifs);
 
   dp->msgraph = new GridDataPiece::mscomplex_t;
 
@@ -108,7 +108,7 @@ void write_msgraph_to_archive(GridDataPiece * dp)
 
   std::ofstream ofs(filename.c_str());
 
-  boost::archive::text_oarchive oa(ofs);
+  boost::archive::binary_oarchive oa(ofs);
 
   oa << (*dp->msgraph);
 
@@ -412,7 +412,7 @@ void GridDataManager::collectManifold( GridDataPiece  * dp)
 
   std::stringstream ss;
 
-  ss<<"dp_"<<dp->m_pieceno%num_parallel<<"_disc_";
+  ss<<"dp_"/*<<dp->m_pieceno%num_parallel*/<<"_disc_";
 
   dp->msgraph->write_discs(ss.str());
 
@@ -642,13 +642,13 @@ GridDataManager::GridDataManager
   _LOG ( "Finished Processing peices" );
   _LOG ( "==========================" );
 
-  if ( m_single_threaded_mode == false )
-  {
-    if(m_use_ocl)
-      GridDataset::stop_opencl();
-
-    exit(0);
-  }
+//  if ( m_single_threaded_mode == false )
+//  {
+//    if(m_use_ocl)
+//      GridDataset::stop_opencl();
+//
+//    exit(0);
+//  }
 
 
 
@@ -661,10 +661,12 @@ GridDataManager::GridDataManager
 
     dp->create_cp_rens();
 
-    delete dp->msgraph;
-
-    dp->msgraph = NULL;
+//    delete dp->msgraph;
+//
+//    dp->msgraph = NULL;
   }
+
+  logAllConnections("log/conn_");
 
 
   std::ifstream data_stream;
@@ -762,10 +764,13 @@ void GridDataManager::renderDataPiece ( GridDataPiece *dp ) const
 
   glTranslatef ( 0.0,0.02,0.0 );
 
-  if ( dp->m_bShowGrad && dp->ren_grad)
+  if ( dp->m_bShowGrad && dp->ren_grad[0] && dp->ren_grad[1])
   {
     glColor3f ( 0.5,0.0,0.5 );
-    dp->ren_grad->render();
+    dp->ren_grad[0]->render();
+
+    glColor3f ( 0.0,0.5,0.5 );
+    dp->ren_grad[1]->render();
 
   }
 
@@ -939,10 +944,10 @@ GridDataPiece::GridDataPiece (uint pno):
     m_bShowCancCps(false),
     m_bShowCancMsGraph(false),
     ren_surf(NULL),
-    ren_grad(NULL),
     m_pieceno(pno)
 {
   memset(ren_cp,0,sizeof(ren_cp));
+  memset(ren_grad,0,sizeof(ren_grad));
   memset(ren_cp_labels,0,sizeof(ren_cp_labels));
   memset(ren_cp_conns,0,sizeof(ren_cp_conns));
   memset(ren_canc_cp,0,sizeof(ren_canc_cp));
@@ -1091,13 +1096,16 @@ void GridDataPiece::create_grad_rens()
   rect_t r = dataset->get_ext_rect();
 
   std::vector<glutils::vertex_t>      cell_locations;
-  std::vector<glutils::line_idx_t>    pair_idxs;
+  std::vector<glutils::line_idx_t>    pair_idxs[2];
 
 
   for(cell_coord_t y = r.bottom(); y<=r.top(); ++y)
     for(cell_coord_t x = r.left(); x<=r.right(); ++x)
     {
     cellid_t c = cellid_t(x,y);
+
+    uint dim = GridDataset::s_getCellDim(c);
+
     if(dataset->isCellPaired(c))
     {
       cellid_t p = dataset->getCellPairId(c);
@@ -1112,7 +1120,7 @@ void GridDataPiece::create_grad_rens()
         dataset->getCellCoord(p,x,y,z);
         cell_locations.push_back(glutils::vertex_t(x,y,z) );
 
-        pair_idxs.push_back
+        pair_idxs[dim].push_back
             (glutils::line_idx_t(cell_locations.size()-2,
                                  cell_locations.size()-1));
 
@@ -1120,9 +1128,16 @@ void GridDataPiece::create_grad_rens()
     }
   }
 
-  ren_grad = glutils::create_buffered_lines_ren
-             (glutils::make_buf_obj(cell_locations),
-              glutils::make_buf_obj(pair_idxs),
+  glutils::bufobj_ptr_t cell_bo= glutils::make_buf_obj(cell_locations);
+
+  ren_grad[0] = glutils::create_buffered_lines_ren
+             (cell_bo,
+              glutils::make_buf_obj(pair_idxs[0]),
+              glutils::make_buf_obj());
+
+  ren_grad[1] = glutils::create_buffered_lines_ren
+             (cell_bo,
+              glutils::make_buf_obj(pair_idxs[1]),
               glutils::make_buf_obj());
 
 

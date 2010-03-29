@@ -378,6 +378,8 @@ struct persistence_comparator_t
 
 };
 
+#include <limits>
+
 void GridMSComplex::simplify(crit_idx_pair_list_t & canc_pairs_list,
                              double simplification_treshold)
 {
@@ -393,19 +395,26 @@ void GridMSComplex::simplify(crit_idx_pair_list_t & canc_pairs_list,
 
   cell_fn_t max_persistence = 0.0;
 
+  cell_fn_t max_val = std::numeric_limits<cell_fn_t>::min();
+  cell_fn_t min_val = std::numeric_limits<cell_fn_t>::max();
+
   for(uint i = 0 ;i < m_cps.size();++i)
   {
     critpt_t *cp = m_cps[i];
 
+    max_val = std::max(max_val,m_cp_fns[i]);
+
+    min_val = std::min(min_val,m_cp_fns[i]);
+
     for(const_conn_iter_t it = cp->des.begin();it != cp->des.end() ;++it)
     {
       canc_pair_priq.push(std::make_pair(i,*it));
-
-      cell_fn_t persistence = std::abs(m_cp_fns[i]-m_cp_fns[*it]);
-
-      max_persistence = std::max(persistence,max_persistence );
     }
   }
+
+  max_persistence = max_val - min_val;
+
+  _LOG_VAR(max_persistence);
 
   uint num_cancellations = 0;
 
@@ -432,22 +441,35 @@ void GridMSComplex::simplify(crit_idx_pair_list_t & canc_pairs_list,
         ( cp1->isCancelled           == false ) &&
         ( cp2->isCancelled           == false ) &&
         ( cp1->isOnStrangulationPath == false ) &&
-        ( cp2->isOnStrangulationPath == false ) &&
-        ( !m_rect.isOnBoundry(cp1->cellid)) &&
-        ( !m_rect.isOnBoundry(cp2->cellid))
-        )
+        ( cp2->isOnStrangulationPath == false ) )
     {
-      cancelPairs ( this,v1,v2 );
-      num_cancellations++;
 
-      // by boundry cancelable I mean cancelable only ..:)
-      cp1->isBoundryCancelable = true;
-      cp2->isBoundryCancelable = true;
+      if( (m_rect.isOnBoundry(cp1->cellid) && m_rect.isOnBoundry(cp2->cellid))||
+          (!m_rect.isOnBoundry(cp1->cellid) && !m_rect.isOnBoundry(cp2->cellid))
+          )
 
-      cp1->pair_idx  = v2;
-      cp2->pair_idx  = v1;
+      {
 
-      canc_pairs_list.push_back(canc_pair);
+        std::vector<uint> new_edges;
+
+        cancelPairs ( this,v1,v2 ,new_edges);
+        num_cancellations++;
+
+        // by boundry cancelable I mean cancelable only ..:)
+        cp1->isBoundryCancelable = true;
+        cp2->isBoundryCancelable = true;
+
+        cp1->pair_idx  = v2;
+        cp2->pair_idx  = v1;
+
+        canc_pairs_list.push_back(canc_pair);
+
+        for(uint i = 0 ; i < new_edges.size(); i+=2)
+        {
+          canc_pair_priq.push(std::make_pair(new_edges[i],new_edges[i+1]));
+
+        }
+      }
     }
   }
 
@@ -480,7 +502,7 @@ void GridMSComplex::simplify_un_simplify(double simplification_treshold)
 
 #include <fstream>
 
-#define SAVE_TO_ASCII
+//#define SAVE_TO_ASCII
 
 void write_disc(const GridMSComplex::critpt_disc_t *disc,
                 const std::string &prefix,
@@ -539,8 +561,8 @@ void GridMSComplex::write_discs(const std::string &fn_prefix)
 #include <boost/serialization/base_object.hpp>
 #include <boost/serialization/binary_object.hpp>
 
-#include <boost/archive/text_oarchive.hpp>
-#include <boost/archive/text_iarchive.hpp>
+#include <boost/archive/binary_iarchive.hpp>
+#include <boost/archive/binary_oarchive.hpp>
 
 //#include <grid_dataset.h>
 
@@ -626,13 +648,13 @@ namespace boost
 // fail to link for lack of instantiantiation of the above function
 // The impls are visible only in this file to save compilation time..
 
-template void boost::serialization::serialize<boost::archive::text_iarchive>(
-    boost::archive::text_iarchive & ar,
+template void boost::serialization::serialize<boost::archive::binary_iarchive>(
+    boost::archive::binary_iarchive & ar,
     GridMSComplex & g,
     const unsigned int file_version
 );
-template void boost::serialization::serialize<boost::archive::text_oarchive>(
-    boost::archive::text_oarchive & ar,
+template void boost::serialization::serialize<boost::archive::binary_oarchive>(
+    boost::archive::binary_oarchive & ar,
     GridMSComplex & g,
     const unsigned int file_version
 );

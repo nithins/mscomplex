@@ -65,7 +65,7 @@ struct GridDataPiece
   bool m_bShowCancMsGraph;
 
   glutils::renderable_t  *ren_surf;
-  glutils::renderable_t  *ren_grad;
+  glutils::renderable_t  *ren_grad[2];
 
   glutils::renderable_t  *ren_cp_labels[3];
   glutils::renderable_t  *ren_cp[3];

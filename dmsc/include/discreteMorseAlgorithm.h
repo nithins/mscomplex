@@ -463,6 +463,127 @@ template <typename id_t>
   DEBUG_LOG_V ( "=========================" );
 }
 
+template <typename id_t>
+    void cancelPairs ( MSComplex<id_t> *msc,uint cp0_ind,uint cp1_ind,std::vector<uint> & new_edges )
+{
+
+  typedef typename std::multiset<uint> cp_adj_t;
+
+  DEBUG_LOG_V ( "=========================" );
+  DEBUG_LOG_V ( "cancelling pairs "<<msc->m_cps[cp0_ind]->cellid<<" "<<msc->m_cps[cp1_ind]->cellid );
+  DEBUG_LOG_V ( "-------------------------" );
+
+  if ( msc->m_cps[cp0_ind]->asc.find ( cp1_ind ) == msc->m_cps[cp0_ind]->asc.end() )
+  {
+    std::swap ( cp0_ind,cp1_ind );
+  }
+
+
+  if ( msc->m_cps[cp0_ind]->asc.find ( cp1_ind ) == msc->m_cps[cp0_ind]->asc.end() )
+  {
+    _ERROR ( "pair =  "<<msc->m_cps[cp0_ind]->cellid<<" "<<msc->m_cps[cp1_ind]->cellid );
+    _ERROR ( "critical points are not connected" );
+    return;
+  }
+
+
+
+  //   std::stringstream ss;
+  //
+  //   ss<<"asc("<<msc->m_cps[cp0_ind]->cellid<<")="<<"{";
+  //
+  //   for ( typename cp_adj_t::iterator asc0_it = msc->m_cps[cp0_ind]->asc.begin();asc0_it != msc->m_cps[cp0_ind]->asc.end(); ++asc0_it )
+  //   {
+  //     ss<<msc->m_cps[*asc0_it]->cellid<<",";
+  //   }
+  //   ss<<"}";
+  //
+  //   _LOG ( ss.str() );
+
+
+  for ( typename cp_adj_t::iterator asc0_it = msc->m_cps[cp0_ind]->asc.begin();asc0_it != msc->m_cps[cp0_ind]->asc.end(); ++asc0_it )
+  {
+    for ( typename cp_adj_t::iterator des1_it = msc->m_cps[cp1_ind]->des.begin();des1_it != msc->m_cps[cp1_ind]->des.end(); ++des1_it )
+    {
+      if ( ( *asc0_it == cp1_ind ) || ( *des1_it == cp0_ind ) )
+        continue;
+
+      msc->m_cps[ *asc0_it ]->des.insert ( *des1_it );
+      msc->m_cps[ *des1_it ]->asc.insert ( *asc0_it );
+
+      DEBUG_LOG_V ( "Connected "<<msc->m_cps[*asc0_it]->cellid<<" to "<<msc->m_cps[*des1_it]->cellid );
+
+      new_edges.push_back(*des1_it );
+      new_edges.push_back(*asc0_it );
+
+      if ( msc->m_cps[ *asc0_it ]->des.count ( *des1_it ) >= 2 )
+      {
+        msc->m_cps[ *asc0_it ]->isOnStrangulationPath = true;
+        msc->m_cps[ *des1_it ]->isOnStrangulationPath = true;
+
+        DEBUG_LOG_V ( "Strangulation by "<<msc->m_cps[*asc0_it]->cellid<<" "<<msc->m_cps[*des1_it]->cellid );
+
+      }
+    }
+  }
+
+  for ( typename cp_adj_t::iterator asc0_it = msc->m_cps[cp0_ind]->asc.begin();asc0_it != msc->m_cps[cp0_ind]->asc.end(); ++asc0_it )
+  {
+    if ( *asc0_it == cp1_ind )  continue;
+
+//    DEBUG_LOG_V ( "merging des_manifold of "<< cp1_ind<<" with " << *asc0_it );
+
+//    msc->m_cps[ *asc0_it ]->des_disc.insert ( msc->m_cps[ cp1_ind ]->des_disc.begin(),msc->m_cps[ cp1_ind ]->des_disc.end() );
+
+    DEBUG_LOG_V ( "Removing   "<<cp0_ind<<" from "<< ( *asc0_it ) );
+
+    msc->m_cps[  *asc0_it ]->des.erase ( cp0_ind );
+  }
+
+  for ( typename cp_adj_t::iterator des0_it = msc->m_cps[cp0_ind]->des.begin();des0_it != msc->m_cps[cp0_ind]->des.end(); ++des0_it )
+  {
+    msc->m_cps[ ( *des0_it ) ]->asc.erase ( cp0_ind );
+
+    DEBUG_LOG_V ( "Removing   "<<cp0_ind<<" from "<< ( *des0_it ) );
+  }
+
+  for ( typename cp_adj_t::iterator asc1_it = msc->m_cps[cp1_ind]->asc.begin();asc1_it != msc->m_cps[cp1_ind]->asc.end(); ++asc1_it )
+  {
+    msc->m_cps[ ( *asc1_it ) ]->des.erase ( cp1_ind );
+
+    DEBUG_LOG_V ( "Removing   "<<cp1_ind<<" from "<< ( *asc1_it ) );
+  }
+
+  for ( typename cp_adj_t::iterator des1_it = msc->m_cps[cp1_ind]->des.begin();des1_it != msc->m_cps[cp1_ind]->des.end(); ++des1_it )
+  {
+    if ( ( *des1_it ) == cp0_ind )  continue;
+
+//    DEBUG_LOG_V ( "merging asc_manifold of "<< cp0_ind<<" with " << *des1_it );
+
+//    msc->m_cps[ *des1_it ]->asc_disc.insert ( msc->m_cps[ cp0_ind ]->asc_disc.begin(),msc->m_cps[ cp0_ind ]->asc_disc.end() );
+
+    DEBUG_LOG_V ( "Removing   "<<cp1_ind<<" from "<< ( *des1_it ) );
+
+    msc->m_cps[ ( *des1_it ) ]->asc.erase ( cp1_ind );
+
+
+  }
+
+  msc->m_cps[cp0_ind]->isCancelled = true;
+  //  msc->m_cps[cp0_ind]->asc.clear();
+  msc->m_cps[cp0_ind]->des.clear();
+  //  msc->m_cps[cp0_ind]->asc_disc.clear();
+  //  msc->m_cps[cp0_ind]->des_disc.clear();
+
+  msc->m_cps[cp1_ind]->isCancelled = true;
+  msc->m_cps[cp1_ind]->asc.clear();
+  //  msc->m_cps[cp1_ind]->des.clear();
+  //  msc->m_cps[cp1_ind]->asc_disc.clear();
+  //  msc->m_cps[cp1_ind]->des_disc.clear();
+
+  DEBUG_LOG_V ( "=========================" );
+}
+
 #undef LOG_LEVEL
 #define LOG_LEVEL 2
 
@@ -1153,6 +1274,8 @@ void print_connections
   {
     if(msc.m_cps[*it]->isBoundryCancelable)
       os<<"*";
+    if(msc.m_cps[*it]->isOnStrangulationPath)
+      os<<"-";
     os<<msc.m_cps[*it]->cellid;
     os<<", ";
   }
@@ -1168,6 +1291,8 @@ void print_connections
     os<<"des(";
     if(msc.m_cps[i]->isBoundryCancelable)
       os<<"*";
+    if(msc.m_cps[i]->isOnStrangulationPath)
+      os<<"-";
     os<<msc.m_cps[i]->cellid<<") = ";
     print_connections(os,msc,msc.m_cps[i]->des);
     os<<std::endl;
@@ -1175,6 +1300,8 @@ void print_connections
     os<<"asc(";
     if(msc.m_cps[i]->isBoundryCancelable)
       os<<"*";
+    if(msc.m_cps[i]->isOnStrangulationPath)
+      os<<"-";
     os<<msc.m_cps[i]->cellid<<") = ";
     print_connections(os,msc,msc.m_cps[i]->asc);
     os<<std::endl;
