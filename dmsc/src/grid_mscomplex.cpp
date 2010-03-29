@@ -379,6 +379,7 @@ struct persistence_comparator_t
 };
 
 #include <limits>
+#include <grid_dataset.h>
 
 void GridMSComplex::simplify(crit_idx_pair_list_t & canc_pairs_list,
                              double simplification_treshold)
@@ -435,44 +436,50 @@ void GridMSComplex::simplify(crit_idx_pair_list_t & canc_pairs_list,
     if((double)persistence/(double)max_persistence > simplification_treshold)
       break;
 
-    // pop the topmost item in the priority queue and cancel
-
-    if (
-        ( cp1->isCancelled           == false ) &&
-        ( cp2->isCancelled           == false ) &&
-        ( cp1->isOnStrangulationPath == false ) &&
-        ( cp2->isOnStrangulationPath == false ) )
+    if(GridDataset::s_getCellDim(cp2->cellid) == 1)
     {
+      std::swap(cp1,cp2);
+      std::swap(v1,v2);
+    }
 
-      if( (m_rect.isOnBoundry(cp1->cellid) && m_rect.isOnBoundry(cp2->cellid))||
-          (!m_rect.isOnBoundry(cp1->cellid) && !m_rect.isOnBoundry(cp2->cellid))
-          )
+    uint cp2_dim = GridDataset::s_getCellDim(cp2->cellid);
 
-      {
+    if( ( cp1->isCancelled  ) ||( cp2->isCancelled ) )
+      continue;
 
-        std::vector<uint> new_edges;
+    if(m_rect.isOnBoundry(cp1->cellid) && !m_rect.isOnBoundry(cp2->cellid))
+      continue;
 
-        cancelPairs ( this,v1,v2 ,new_edges);
-        num_cancellations++;
+    if(!m_rect.isOnBoundry(cp1->cellid) && m_rect.isOnBoundry(cp2->cellid))
+      continue;
 
-        // by boundry cancelable I mean cancelable only ..:)
-        cp1->isBoundryCancelable = true;
-        cp2->isBoundryCancelable = true;
+    conn_t *cp2_acdc[] = {&cp2->asc,&cp2->des};
 
-        cp1->pair_idx  = v2;
-        cp2->pair_idx  = v1;
+    if(cp1->isOnStrangulationPath && cp2_acdc[cp2_dim/2]->size() != 1)
+      continue;
 
-        canc_pairs_list.push_back(canc_pair);
+    if(cp1->isOnStrangulationPath && m_rect.isOnBoundry(cp1->cellid))
+      continue;
 
-        for(uint i = 0 ; i < new_edges.size(); i+=2)
-        {
-          canc_pair_priq.push(std::make_pair(new_edges[i],new_edges[i+1]));
+    std::vector<uint> new_edges;
 
-        }
-      }
+    cancelPairs ( this,v1,v2 ,new_edges);
+    num_cancellations++;
+
+    // by boundry cancelable I mean cancelable only ..:)
+    cp1->isBoundryCancelable = true;
+    cp2->isBoundryCancelable = true;
+
+    cp1->pair_idx  = v2;
+    cp2->pair_idx  = v1;
+
+    canc_pairs_list.push_back(canc_pair);
+
+    for(uint i = 0 ; i < new_edges.size(); i+=2)
+    {
+      canc_pair_priq.push(std::make_pair(new_edges[i],new_edges[i+1]));
     }
   }
-
   _LOG_VAR(num_cancellations);
 }
 
