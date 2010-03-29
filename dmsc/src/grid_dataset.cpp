@@ -1233,20 +1233,23 @@ int GridDataset::postMergeFillDiscs(mscomplex_t *msgraph)
 
         cellid_t cets[2];
 
-        uint cet_ct = ( this->*getcets[j] )(path_cell,cets);
+        uint cet_ct = ( this->*getcets[(j+1)%2] )(path_cell,cets);
 
-        uint inf_idx = 0;
+        for(uint k = 0 ; k < cet_ct;++k)
+        {
+          if(isCellCritical(cets[k]))
+            continue;
 
-        if(cet_ct >inf_idx &&
-           isCellPaired(cets[inf_idx]) &&
-           getCellPairId(cets[inf_idx]) == path_cell)
-          inf_idx = 1;
+          if(m_rect.contains(cets[k]) == false)
+            continue;
 
-        if(cet_ct > inf_idx &&
-           isCellPaired(cets[inf_idx]) &&
-           !isCellCritical(cets[inf_idx]) &&
-           m_rect.contains(getCellPairId(cets[inf_idx])))
-          disc[j]->push_back(getCellPairId(cets[inf_idx]));
+          cellid_t p = getCellPairId(cets[k]);
+
+          if( p== path_cell || m_rect.contains(cets[k]) == false)
+            continue;
+
+          disc[j]->push_back(p);
+        }
 
         path_cell_idx++;
       }

@@ -312,6 +312,9 @@ void GridDataManager::mergePiecesDown()
 
   uint i_incr = 1;
 
+  if(num_graphs < 4 )
+    return;
+
   for ( int i = 1; i < num_graphs/4; )
   {
     uint threadno = 0 ;
@@ -369,6 +372,9 @@ void GridDataManager::finalMergeDownPiecesInRange(uint start,uint end)
   bool archive_dest  = false ;
 
   uint threadno = 0;
+
+  if(end-start == 1 )
+    return;
 
   for ( int j = start; j < end; j += 2)
   {
@@ -632,7 +638,8 @@ GridDataManager::GridDataManager
 
   mergePiecesUp();
 
-  m_pieces[m_pieces.size()-1]->msgraph->simplify_un_simplify(m_simp_tresh);
+  if(m_simp_tresh > 0.0)
+    m_pieces[m_pieces.size()-1]->msgraph->simplify_un_simplify(m_simp_tresh);
 
   mergePiecesDown();
 
