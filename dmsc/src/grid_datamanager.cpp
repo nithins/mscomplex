@@ -28,6 +28,7 @@
 #include <boost/archive/binary_oarchive.hpp>
 
 #include <modelcontroller.h>
+#include <timer.h>
 
 #include <grid_datamanager.h>
 #include <discreteMorseAlgorithm.h>
@@ -627,6 +628,9 @@ GridDataManager::GridDataManager
   if(m_use_ocl)
     GridDataset::init_opencl();
 
+  Timer t;
+  t.start();
+
   _LOG ( "==========================" );
   _LOG ( "Starting Processing Peices" );
   _LOG ( "--------------------------" );
@@ -636,18 +640,32 @@ GridDataManager::GridDataManager
 
   computeSubdomainMsgraphs ();
 
+  _LOG("timer_time = "<<t.getElapsedTimeInMilliSec());
+
   mergePiecesUp();
+
+  _LOG("timer_time = "<<t.getElapsedTimeInMilliSec());
 
   if(m_simp_tresh > 0.0)
     m_pieces[m_pieces.size()-1]->msgraph->simplify_un_simplify(m_simp_tresh);
 
+  _LOG("timer_time = "<<t.getElapsedTimeInMilliSec());
+
   mergePiecesDown();
 
+  _LOG("timer_time = "<<t.getElapsedTimeInMilliSec());
+
   collectSubdomainManifolds();
+
+  _LOG("timer_time = "<<t.getElapsedTimeInMilliSec());
 
   _LOG ( "--------------------------" );
   _LOG ( "Finished Processing peices" );
   _LOG ( "==========================" );
+
+  write_msgraph_to_archive(m_pieces[m_pieces.size()-1]);
+
+  exit(0);
 
 //  if ( m_single_threaded_mode == false )
 //  {

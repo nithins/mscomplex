@@ -413,6 +413,8 @@ void GridMSComplex::simplify(crit_idx_pair_list_t & canc_pairs_list,
     }
   }
 
+  crit_idx_pair_list_t resubmit_strangulations_list;
+
   max_persistence = max_val - min_val;
 
   _LOG_VAR(max_persistence);
@@ -456,7 +458,11 @@ void GridMSComplex::simplify(crit_idx_pair_list_t & canc_pairs_list,
     conn_t *cp2_acdc[] = {&cp2->asc,&cp2->des};
 
     if(cp1->isOnStrangulationPath && cp2_acdc[cp2_dim/2]->size() != 1)
+    {
+      // save this to the resubmit queue
+      resubmit_strangulations_list.push_back(canc_pair);
       continue;
+    }
 
     if(cp1->isOnStrangulationPath && m_rect.isOnBoundry(cp1->cellid))
       continue;
@@ -479,6 +485,14 @@ void GridMSComplex::simplify(crit_idx_pair_list_t & canc_pairs_list,
     {
       canc_pair_priq.push(std::make_pair(new_edges[i],new_edges[i+1]));
     }
+
+    for(uint i = 0 ; i < resubmit_strangulations_list.size(); i++)
+    {
+      canc_pair_priq.push(resubmit_strangulations_list[i]);
+    }
+
+    resubmit_strangulations_list.clear();
+
   }
   _LOG_VAR(num_cancellations);
 }
