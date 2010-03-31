@@ -25,7 +25,8 @@ string usage_string(const char * progname)
       " [-st]"\
       " [-ocl]"\
       " [--simp-tresh 0.<tresh>]"\
-      " [--out-of-core]"
+      " [--out-of-core]"\
+      " [--num-parallel <num>]"
       <<endl;
 
   return ss.str();
@@ -119,6 +120,8 @@ IModel * parse_grid(string cmdline)
 
   const boost::regex out_of_core_re ( "(--out-of-core)" );
 
+  const boost::regex num_parallel_re ( "(--num-parallel ([[:digit:]]+))" );
+
   uint   size_x = 0, size_y = 0;
 
   string filename;
@@ -134,6 +137,8 @@ IModel * parse_grid(string cmdline)
   double   simp_tresh= 0.0;
 
   boost::smatch matches;
+
+  uint   num_parallel  = 1;
 
   if ( regex_search ( cmdline,matches, file_re ) )
   {
@@ -176,6 +181,13 @@ IModel * parse_grid(string cmdline)
     num_levels = atoi ( ml.c_str() );
   }
 
+  if ( regex_search ( cmdline,matches, num_parallel_re ) )
+  {
+    string ml ( matches[2].first,matches[2].second );
+    num_parallel = atoi ( ml.c_str() );
+
+  }
+
   if ( regex_search ( cmdline,matches, num_canc_re ) )
   {
     string num_canc_str ( matches[2].first,matches[2].second );
@@ -189,7 +201,7 @@ IModel * parse_grid(string cmdline)
   }
 
   return new GridDataManager
-      (filename,size_x,size_y,num_levels,single_thread,use_ocl,simp_tresh,out_of_core_flag);
+      (filename,size_x,size_y,num_levels,single_thread,use_ocl,simp_tresh,out_of_core_flag,num_parallel);
 }
 
 

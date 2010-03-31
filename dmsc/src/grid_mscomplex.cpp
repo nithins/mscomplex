@@ -403,6 +403,20 @@ void GridMSComplex::simplify(crit_idx_pair_list_t & canc_pairs_list,
   {
     critpt_t *cp = m_cps[i];
 
+    if(GridDataset::s_getCellDim(cp->cellid) == 1)
+    {
+      conn_t *cp_acdc[]={&cp->asc,&cp->des};
+
+      for(uint j =0;j<2;++j)
+      {
+        if(cp_acdc[j]->size() != 2)
+          continue;
+
+        if(*(cp_acdc[j]->begin()) == *(++cp_acdc[j]->begin()))
+          cp->isOnStrangulationPath = true;
+      }
+    }
+
     max_val = std::max(max_val,m_cp_fns[i]);
 
     min_val = std::min(min_val,m_cp_fns[i]);

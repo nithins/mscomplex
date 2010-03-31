@@ -113,13 +113,19 @@ public:
   // actual algorithm work
 public:
 
+  void  work();
+
+  void  writeout_connectivity(mscomplex_t *msgraph);
+
   void  assignGradients();
 
-  void  computeConnectivity(mscomplex_t *msgraph);
+  void  collateCriticalPoints();
+
+  void  assignCellOwnerExtrema();
+
+
 
   void  work_ocl(bool collect_cps = true);
-
-  void  work_grad_collate_ocl();
 
   void  writeout_connectivity_ocl(mscomplex_t *msgraph);
 
@@ -137,11 +143,12 @@ public:
 
   void  collect_saddle_conn_ocl(cl_command_queue &commands);
 
+
+
   int   postMergeFillDiscs(mscomplex_t *msgraph);
 
-  // sub tasks of the above routines
-public:
-  void  collateCriticalPoints();
+
+
 
   // dataset interface
 public:

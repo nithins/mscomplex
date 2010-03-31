@@ -350,41 +350,6 @@ void  GridDataset::clear_buffers_ocl()
   m_cell_own_img = NULL;
 }
 
-void GridDataset::work_grad_collate_ocl()
-{
-  int error_code;                       // error code returned from api calls
-
-  _START_TIMER(timer);
-
-  cl_command_queue commands = clCreateCommandQueue
-                              (s_context, s_device_id, 0, &error_code);
-
-  _CHECKCL_ERR_CODE(error_code,"Failed to create commands queue");
-
-  create_pair_flag_imgs_ocl();
-
-  _LOG_TIMER(timer,"Created data imgs");
-
-  assignGradients_ocl(commands);
-
-  _LOG_TIMER(timer,"Gradient Assignment Done");
-
-  read_pair_img_ocl(commands);
-  read_flag_img_ocl(commands);
-
-  _LOG_TIMER(timer,"Read back Pair and flag results");
-
-  collateCritcalPoints_ocl(commands);
-
-  _LOG_TIMER(timer,"Collated crit pts");
-
-  clear_buffers_ocl();
-
-  error_code = clReleaseCommandQueue(commands);
-
-  _CHECKCL_ERR_CODE(error_code,"Failed to release commands queue");
-}
-
 void  GridDataset::work_ocl(bool collect_cps )
 {
   int error_code;                       // error code returned from api calls
@@ -1175,9 +1140,9 @@ int GridDataset::postMergeFillDiscs(mscomplex_t *msgraph)
   }
 
   // all 0 d cells are owned by some minima
-  for (cell_coord_t y = m_rect.bottom(); y <= m_rect.top();y += 2)
+  for (cell_coord_t y = m_rect.bottom(); ;y += 2)
   {
-    for (cell_coord_t x = m_rect.left(); x <= m_rect.right();x += 2)
+    for (cell_coord_t x = m_rect.left(); ;x += 2)
     {
       cellid_t c (x,y);
 
@@ -1192,13 +1157,16 @@ int GridDataset::postMergeFillDiscs(mscomplex_t *msgraph)
       {
         surv_crit_asc_disc_map[o]->push_back(c);
       }
+
+      if(x == m_rect.right()) break;
     }
+    if(y == m_rect.top()) break;
   }
 
   // all 2 d cells are owned by some maxima
-  for (cell_coord_t y = m_rect.bottom()+1; y < m_rect.top();y += 2)
+  for (cell_coord_t y = m_rect.bottom()+1;;y += 2)
   {
-    for (cell_coord_t x = m_rect.left()+1; x < m_rect.right();x += 2)
+    for (cell_coord_t x = m_rect.left()+1;;x += 2)
     {
       cellid_t c (x,y);
 
@@ -1213,7 +1181,9 @@ int GridDataset::postMergeFillDiscs(mscomplex_t *msgraph)
       {
         surv_crit_des_disc_map[o]->push_back(c);
       }
+      if(x + 1 == m_rect.right()) break;
     }
+    if(y + 1== m_rect.top()) break;
   }
   // all surv saddles must now contain seed points to track their 1 manifold
 
@@ -1405,7 +1375,6 @@ inline bool lowestPairableCoFacet
 
 void track_gradient_tree_bfs
     (GridDataset *dataset,
-     GridDataset::mscomplex_t *msgraph,
      GridDataset::cellid_t start_cellId,
      eGradDirection gradient_dir
      )
@@ -1424,6 +1393,8 @@ void track_gradient_tree_bfs
 
     cell_queue.pop();
 
+    (*dataset->m_cell_own)(top_cell) = start_cellId;
+
     id_type      cets[20];
 
     uint cet_ct = ( dataset->*getcets[gradient_dir] ) ( top_cell,cets );
@@ -1432,7 +1403,7 @@ void track_gradient_tree_bfs
     {
       if ( dataset->isCellCritical ( cets[i] ) )
       {
-        connectCps(msgraph,start_cellId,cets[i]);
+//        connectCps(msgraph,start_cellId,cets[i]);
       }
       else
       {
@@ -1444,6 +1415,8 @@ void track_gradient_tree_bfs
                dataset->getCellDim ( next_cell ) &&
                next_cell != top_cell )
           {
+            (*dataset->m_cell_own)(cets[i]) = start_cellId;
+
             // mark here that the parent of next cell is top_cell
             cell_queue.push ( next_cell );
           }
@@ -1758,6 +1731,15 @@ std::string GridDataset::getCellDescription (cellid_t c) const
 
 }
 
+void GridDataset::work()
+{
+  assignGradients();
+
+  collateCriticalPoints();
+
+  assignCellOwnerExtrema();
+}
+
 void  GridDataset::assignGradients()
 {
 
@@ -1835,8 +1817,6 @@ void  GridDataset::assignGradients()
       }
     }
   }
-
-  collateCriticalPoints();
 }
 
 void  GridDataset::collateCriticalPoints()
@@ -1852,13 +1832,30 @@ void  GridDataset::collateCriticalPoints()
 }
 
 
-inline void add_to_grad_tree_proxy (GridDataset::cellid_t)
+void  GridDataset::assignCellOwnerExtrema()
 {
-  // just do nothing
-  return;
+  for (cellid_list_t::iterator it = m_critical_cells.begin() ;
+  it != m_critical_cells.end();++it)
+  {
+
+    (*m_cell_own)(*it) = *it;
+
+    switch (getCellDim (*it))
+    {
+    case 0:
+      track_gradient_tree_bfs(this,*it,GRADIENT_DIR_UPWARD);
+      break;
+    case 2:
+      track_gradient_tree_bfs(this,*it,GRADIENT_DIR_DOWNWARD);
+      break;
+    default:
+      break;
+    }
+  }
+
 }
 
-void  GridDataset::computeConnectivity(mscomplex_t *msgraph)
+void  GridDataset::writeout_connectivity(mscomplex_t *msgraph)
 {
 
   addCriticalPointsToMSComplex
@@ -1866,22 +1863,6 @@ void  GridDataset::computeConnectivity(mscomplex_t *msgraph)
 
   msgraph->m_cp_fns.resize(m_critical_cells.size());
 
-  for (cellid_list_t::iterator it = m_critical_cells.begin() ;
-  it != m_critical_cells.end();++it)
-  {
-
-    switch (getCellDim (*it))
-    {
-    case 0:
-      track_gradient_tree_bfs(this,msgraph,*it,GRADIENT_DIR_UPWARD);
-      break;
-    case 2:
-      track_gradient_tree_bfs(this,msgraph,*it,GRADIENT_DIR_DOWNWARD);
-      break;
-    default:
-      break;
-    }
-  }
 
   for (cellid_list_t::iterator it = m_critical_cells.begin() ;
   it != m_critical_cells.end();++it)
@@ -1891,6 +1872,30 @@ void  GridDataset::computeConnectivity(mscomplex_t *msgraph)
     uint cp_idx = msgraph->m_id_cp_map[c];
 
     msgraph->m_cp_fns[cp_idx] = get_cell_fn(c);
+
+    if(getCellDim(c) == 1)
+    {
+      cellid_t f[4],cf[4];
+
+      uint f_ct = getCellFacets(c,f);
+      uint cf_ct = getCellCofacets(c,cf);
+
+      for(uint i = 0 ; i < f_ct;++i)
+      {
+        cellid_t f_own_cp = (*m_cell_own)(f[i]);
+
+        if(f_own_cp != cellid_t(-1,-1))
+          connectCps(msgraph,c,f_own_cp);
+      }
+
+      for(uint i = 0 ; i < cf_ct;++i)
+      {
+        cellid_t cf_own_cp = (*m_cell_own)(cf[i]);
+
+        if(cf_own_cp != cellid_t(-1,-1))
+          connectCps(msgraph,c,cf_own_cp);
+      }
+    }
 
     if(!isCellPaired(c))  continue;
 

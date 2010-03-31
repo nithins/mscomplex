@@ -86,8 +86,6 @@ struct GridDataPiece
   std::string label();
 };
 
-const uint num_parallel = 8;
-
 namespace boost
 {
   class thread;
@@ -123,9 +121,12 @@ public:
 
   IModelController            *m_controller;
 
-  boost::thread *              m_threads[num_parallel];
+  boost::thread **             m_threads;
 
 public:
+
+  uint num_parallel;
+
 
   GridDataManager
       ( std::string filename,
@@ -135,7 +136,8 @@ public:
         bool         threaded_mode,
         bool         use_ocl,
         double       simp_tresh,
-        bool         compute_out_of_core);
+        bool         compute_out_of_core,
+        uint         np);
 
   virtual ~GridDataManager ();
 
