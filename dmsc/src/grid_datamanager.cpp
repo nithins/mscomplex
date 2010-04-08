@@ -667,7 +667,7 @@ GridDataManager::GridDataManager
 
 //  write_msgraph_to_archive(m_pieces[m_pieces.size()-1]);
 
-  exit(0);
+//  exit(0);
 
   if ( m_compute_out_of_core == true )
   {
@@ -786,9 +786,9 @@ GridDataManager::~GridDataManager()
 
 glutils::color_t g_grid_cp_colors[] =
 {
-  glutils::color_t(1.0,0.0,0.0),
-  glutils::color_t(0.0,1.0,0.0),
   glutils::color_t(0.0,0.0,1.0),
+  glutils::color_t(0.0,1.0,0.0),
+  glutils::color_t(1.0,0.0,0.0),
 };
 
 
